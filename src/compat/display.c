@@ -14,7 +14,11 @@ int uidisplay_init(int width, int height)
       width = 320;
    }
    
+<<<<<<< HEAD
    if (height != 288 && height != 576)
+=======
+   if (height != 240 && height != 288)
+>>>>>>> 54c7c38 (Create a.yml)
    {
       log_cb(RETRO_LOG_ERROR, "Invalid value for the display height: %d\n", height);
       height = 288;

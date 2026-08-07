@@ -1,617 +1,693 @@
-/* blipbuffer.c
+/* blip_buf $vers. http://www.slack.net/~ant/                       */
 
-Copyright (C) 2003-2006 Shay Green. This module is free software; you
-can redistribute it and/or modify it under the terms of the GNU Lesser
-General Public License as published by the Free Software Foundation; either
-version 2.1 of the License, or (at your option) any later version. This
-module is distributed in the hope that it will be useful, but WITHOUT ANY
-WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for
-more details. You should have received a copy of the GNU Lesser General
-Public License along with this module; if not, write to the Free Software
-Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
-
-Original C++ source:
- Blip_Buffer 0.4.0. http://www.slack.net/~ant/
-
-partially reimplemented in C by Gergely Szasz for FUSE
-
-*/
-
-#include <config.h>
-
-#include <limits.h>
-#include <string.h>
-#include <stdlib.h>
-#include <math.h>
+/* Modified for Genesis Plus GX by EkeEke                           */
+/*  - disabled assertions checks (define #BLIP_ASSERT to re-enable) */
+/*  - fixed multiple time-frames support & removed m->avail         */
+/*  - added blip_mix_samples function (see blip_buf.h)              */
+/*  - added stereo buffer support (define #BLIP_MONO to disable)    */
+/*  - added inverted stereo output (define #BLIP_INVERT to enable)*/
 
 #include "blipbuffer.h"
 
+#ifdef BLIP_ASSERT
+#include <assert.h>
+#endif
+#include <limits.h>
+#include <string.h>
+#include <stdlib.h>
 
-static void _blip_synth_init( Blip_Synth_ * synth_, short *impulses );
+/* Library Copyright (C) 2003-2009 Shay Green. This library is free software;
+you can redistribute it and/or modify it under the terms of the GNU Lesser
+General Public License as published by the Free Software Foundation; either
+version 2.1 of the License, or (at your option) any later version. This
+library is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
+details. You should have received a copy of the GNU Lesser General Public
+License along with this module; if not, write to the Free Software Foundation,
+Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA */
 
-inline void
-blip_buffer_set_clock_rate( Blip_Buffer * buff, long cps )
+#ifdef _WIN32
+//#define DEBUG_BLIP
+#endif
+
+#ifdef DEBUG_BLIP
+#include <windows.h>
+#include <stdio.h>
+
+void debug_me(char *msg, int x)
 {
-  buff->factor_ = blip_buffer_clock_rate_factor( buff, buff->clock_rate_ =
-                                                 cps );
+	while(GetModuleHandle(NULL)) {
+		if( GetProcAddress(NULL, msg) ) Sleep(1);
+		Sleep (1);
+	}
+}
+#endif
+
+#if defined (BLARGG_TEST) && BLARGG_TEST
+	#include "blargg_test.h"
+#endif
+
+#define BLIP_MONO
+
+/*
+Crystal  48K = 3.494400 = 50*312*224
+Crystal 128K = 3.545400 = 50*311*228
+
+3494400 @ 50 == 69888  [2^17.533]
+3545400 @ 50 == 70908  [2^17.540]
+
+53693175 clock @ 50 == 1073863.5  [2^20.034]
+*/
+
+typedef unsigned long long fixed_t;
+
+enum { time_bits = 64-22 };  /* 22.42 -- 768000 * 2^42 = 2EE0 0000 0000 0000*/
+static fixed_t const time_unit = (fixed_t) 1 << time_bits;
+
+typedef signed int buf_t;
+
+struct blip_t
+{
+	fixed_t factor;
+	fixed_t offset;
+	int size;
+	int clock_rate;
+	int sample_rate;
+#ifdef BLIP_MONO
+	buf_t integrator;
+	buf_t* buffer;
+#else
+	buf_t integrator[2];
+	buf_t* buffer[2];
+#endif
+};
+
+#define BLIP_BUFFER_STATE_BUFFER_SIZE 16
+
+struct blip_buffer_state_t
+{
+	fixed_t offset;
+#ifdef BLIP_MONO
+	buf_t integrator;
+	buf_t buffer[BLIP_BUFFER_STATE_BUFFER_SIZE];
+#else
+	buf_t integrator[2];
+	buf_t buffer[2][BLIP_BUFFER_STATE_BUFFER_SIZE];
+#endif
+};
+
+/* Arithmetic (sign-preserving) right shift */
+#define ARITH_SHIFT( n, shift ) \
+	((n) >> (shift))
+
+enum { max_sample = +32767 };
+enum { min_sample = -32768 };
+
+#define CLAMP( n ) \
+{\
+	if ( n > max_sample ) n = max_sample;\
+	else if ( n < min_sample) n = min_sample;\
 }
 
-inline long
-blip_buffer_samples_avail( Blip_Buffer * buff )
+#include "blip_lpf.h"
+
+#ifdef BLIP_ASSERT
+static void check_assumptions( void )
 {
-  return ( long )( buff->offset_ >> BLIP_BUFFER_ACCURACY );
+	int n;
+
+	#if INT_MAX < 0x7FFFFFFF || UINT_MAX < 0xFFFFFFFF
+		#error "int must be at least 32 bits"
+	#endif
+	
+	assert( (-3 >> 1) == -2 ); /* right shift must preserve sign */
+	
+	n = max_sample * 2;
+	CLAMP( n );
+	assert( n == max_sample );
+	
+	n = min_sample * 2;
+	CLAMP( n );
+	assert( n == min_sample );
+	
+	assert( blip_max_ratio <= time_unit );
+	assert( blip_max_frame <= (fixed_t) -1 >> time_bits );
+}
+#endif
+
+blip_t* blip_new( int size )
+{
+	blip_t* m;
+#ifdef BLIP_ASSERT
+	assert( size >= 0 );
+#endif
+
+	m = (blip_t*) malloc( sizeof *m );
+
+#ifdef DEBUG_BLIP
+	printf("[blip_new] %d\n", size); fflush(stdout);
+#endif
+
+	if ( m )
+	{
+#ifdef BLIP_MONO
+		m->buffer = (buf_t*) malloc( size * sizeof (buf_t));
+		if (m->buffer == NULL)
+		{
+			blip_delete(m);
+			return 0;
+		}
+#else
+		m->buffer[0] = (buf_t*) malloc( size * sizeof (buf_t));
+		m->buffer[1] = (buf_t*) malloc( size * sizeof (buf_t));
+		if ((m->buffer[0] == NULL) || (m->buffer[1] == NULL))
+		{
+			blip_delete(m);
+			return 0;
+		}
+#endif
+		m->factor = time_unit;
+		m->size   = size;
+		blip_clear( m );
+#ifdef BLIP_ASSERT
+		check_assumptions();
+#endif
+	}
+	return m;
 }
 
-void
-blip_synth_set_output( Blip_Synth * synth, Blip_Buffer * b )
+void blip_delete( blip_t* m )
 {
-  synth->impl.buf = b;
-  synth->impl.last_amp = 0;
+	if ( m != NULL )
+	{
+#ifdef BLIP_MONO
+		if (m->buffer != NULL)
+			free(m->buffer);
+#else
+		if (m->buffer[0] != NULL)
+			free(m->buffer[0]);
+		if (m->buffer[1] != NULL)
+			free(m->buffer[1]);
+#endif
+		/* Clear fields in case user tries to use after freeing */
+		memset( m, 0, sizeof *m );
+		free( m );
+	}
 }
 
-void
-blip_synth_set_volume( Blip_Synth * synth, double v )
+void blip_set_rates( blip_t* m, double clock_rate, double sample_rate )
 {
-  _blip_synth_volume_unit( &synth->impl,
-                           v * ( 1.0 /
-                                 ( BLIP_SYNTH_RANGE <
-                                   0 ? -( BLIP_SYNTH_RANGE ) :
-                                   BLIP_SYNTH_RANGE ) ) );
+	m->factor = (fixed_t) ((double) time_unit * sample_rate / clock_rate);
+
+#ifdef DEBUG_BLIP
+	printf("[blip_set_rates] %d %d %lld\n", (int) clock_rate, (int) sample_rate, m->factor); fflush(stdout);
+#endif
+
+#ifdef BLIP_ASSERT
+	/* Fails if clock_rate exceeds maximum, relative to sample_rate */
+	assert( 0 <= factor - m->factor && factor - m->factor < 1 );
+#endif
 }
 
-#define BLIP_FWD( i )                     \
-	t0 = i0 * delta + buf[fwd + i];   \
-	t1 = imp[BLIP_RES * (i + 1)] * delta + buf[fwd + 1 + i]; \
-	i0 = imp[BLIP_RES * (i + 2)];          \
-	buf[fwd + i] = t0;                     \
-	buf[fwd + 1 + i] = t1
-
-#define BLIP_REV( r ) \
-	t0 = i0 * delta + buf[rev - r];   \
-	t1 = imp[BLIP_RES * r] * delta + buf[rev + 1 - r];   \
-	i0 = imp[BLIP_RES * (r - 1)];          \
-	buf[rev - r] = t0;                     \
-	buf[rev + 1 - r] = t1
-
-inline void
-blip_synth_offset_resampled( Blip_Synth * synth, blip_resampled_time_t time,
-                             int delta, Blip_Buffer * blip_buf )
+void blip_clear( blip_t* m )
 {
-  int phase, fwd, rev, mid;
-
-  imp_t *imp;
-
-  long *buf, i0, t0, t1;
-
-  delta *= synth->impl.delta_factor;
-  phase =
-    ( int )( time >> ( BLIP_BUFFER_ACCURACY - BLIP_PHASE_BITS ) &
-             ( BLIP_RES - 1 ) );
-  imp = synth->impulses + BLIP_RES - phase;
-  buf = blip_buf->buffer_ + ( time >> BLIP_BUFFER_ACCURACY );
-  i0 = *imp;
-
-  fwd = ( BLIP_WIDEST_IMPULSE_ - BLIP_SYNTH_QUALITY ) / 2;
-  rev = fwd + BLIP_SYNTH_QUALITY - 2;
-
-  BLIP_FWD( 0 );
-  if( BLIP_SYNTH_QUALITY > 8 ) {
-    BLIP_FWD( 2 );
-  }
-  if( BLIP_SYNTH_QUALITY > 12 ) {
-    BLIP_FWD( 4 );
-  }
-
-  mid = BLIP_SYNTH_QUALITY / 2 - 1;
-  t0 = i0 * delta + buf[fwd + mid - 1];
-  t1 = imp[BLIP_RES * mid] * delta + buf[fwd + mid];
-  imp = synth->impulses + phase;
-  i0 = imp[BLIP_RES * mid];
-  buf[fwd + mid - 1] = t0;
-  buf[fwd + mid] = t1;
-
-  if( BLIP_SYNTH_QUALITY > 12 ) {
-    BLIP_REV( 6 );
-  }
-  if( BLIP_SYNTH_QUALITY > 8 ) {
-    BLIP_REV( 4 );
-  }
-  BLIP_REV( 2 );
-
-  t0 = i0 * delta + buf[rev];
-  t1 = *imp * delta + buf[rev + 1];
-  buf[rev] = t0;
-  buf[rev + 1] = t1;
+	m->offset = 0;
+#ifdef BLIP_MONO
+	m->integrator = 0;
+	memset( m->buffer, 0, m->size * sizeof (buf_t) );
+#else
+	m->integrator[0] = 0;
+	m->integrator[1] = 0;
+	memset( m->buffer[0], 0, m->size * sizeof (buf_t) );
+	memset( m->buffer[1], 0, m->size * sizeof (buf_t) );
+#endif
 }
 
-#undef BLIP_FWD
-#undef BLIP_REV
-
-void
-blip_synth_update( Blip_Synth * synth, blip_time_t t, int amp )
+int blip_clocks_needed( const blip_t* m, int samples )
 {
-  int delta = amp - synth->impl.last_amp;
+	fixed_t needed;
 
-  synth->impl.last_amp = amp;
-  blip_synth_offset_resampled( synth,
-                               t * synth->impl.buf->factor_ +
-                               synth->impl.buf->offset_, delta,
-                               synth->impl.buf );
+#ifdef BLIP_ASSERT
+	/* Fails if buffer can't hold that many more samples */
+	assert( (samples >= 0) && (((m->offset >> time_bits) + samples) <= m->size) );
+#endif
+
+	needed = (fixed_t) samples * time_unit;
+
+#ifdef DEBUG_BLIP
+	printf("[blip_clocks_needed] %d %lld %lld\n", samples, time_unit, needed); fflush(stdout);
+#endif
+
+	if ( needed < m->offset )
+		return 0;
+
+	return (needed - m->offset + m->factor - 1) / m->factor;
 }
 
-int
-_blip_synth_impulses_size( Blip_Synth_ * synth_ )
+void blip_end_frame( blip_t* m, unsigned t )
 {
-  return BLIP_RES / 2 * BLIP_SYNTH_WIDTH + 1;
+#ifdef DEBUG_BLIP
+	printf("[blip_end_frame] %lld %d %lld\n", m->offset, t, m->factor); fflush(stdout);
+#endif
+
+	m->offset += (fixed_t) t * m->factor;
+
+#ifdef DEBUG_BLIP
+	printf("[blip_end_frame] %lld %d %lld\n", m->offset, t, m->factor); fflush(stdout);
+#endif
+
+#ifdef BLIP_ASSERT
+	/* Fails if buffer size was exceeded */
+	assert( (m->offset >> time_bits) <= m->size );
+#endif
 }
 
-void
-blip_synth_set_treble_eq( Blip_Synth * synth, double treble )
+int blip_samples_avail( const blip_t* m )
 {
-  blip_eq_t eq = { 0.0, 0, 44100, 0 };
-
-  eq.treble = treble;
-
-  _blip_synth_treble_eq( &synth->impl, &eq );
+	return (m->offset >> time_bits);
 }
 
-#define BUFFER_EXTRA ( BLIP_WIDEST_IMPULSE_ + 2 )
-
-static void
-blip_buffer_init( Blip_Buffer * buff )
+static void remove_samples( blip_t* m, int count )
 {
-  buff->factor_ = LONG_MAX;
-  buff->offset_ = 0;
-  buff->buffer_ = NULL;
-  buff->buffer_size_ = 0;
-  buff->sample_rate_ = 0;
-  buff->reader_accum = 0;
-  buff->bass_shift = 0;
-  buff->clock_rate_ = 0;
-  buff->bass_freq_ = 16;
-  buff->length_ = 0;
+#ifdef BLIP_MONO
+	buf_t* buf = m->buffer;
+#else
+	buf_t* buf = m->buffer[0];
+#endif
+
+	int lpf_taps = blip_lpf_taps(m->sample_rate);
+
+	int remain = (m->offset >> time_bits) - count;
+	if( lpf_taps > remain ) remain = lpf_taps;
+
+	m->offset -= count * time_unit;
+
+#ifdef DEBUG_BLIP
+	printf("[blip_remove_samples] %d %d %d %lld\n", remain, lpf_taps, count, m->offset); fflush(stdout);
+#endif
+
+	memmove( &buf [0], &buf [count], remain * sizeof (buf_t) );
+	memset( &buf [remain], 0, count * sizeof (buf_t) );
+#ifndef BLIP_MONO
+	buf = m->buffer[1];
+	memmove( &buf [0], &buf [count], remain * sizeof (buf_t) );
+	memset( &buf [remain], 0, count * sizeof (buf_t) );
+#endif
 }
 
-static void
-blip_buffer_end( Blip_Buffer * buff )
+void blip_discard_samples_dirty(blip_t* m, int count)
 {
-  if( buff->buffer_ )
-    free( buff->buffer_ );
-  buff->buffer_ = NULL;
+#ifdef BLIP_ASSERT
+	if (count > (m->offset >> time_bits))
+		count = m->offset >> time_bits;
+#endif
+
+	m->offset -= count * time_unit;
 }
 
-Blip_Buffer *
-new_Blip_Buffer( void )
+int blip_read_samples( blip_t* m, short out [], int count, int stereo)
 {
-  Blip_Buffer *ret;
+#ifdef DEBUG_BLIP
+	printf("[blip_read_samples] %d\n", count); fflush(stdout);
+	//debug_me("blip_read_samples", count);
+#endif
 
-  ret = malloc( sizeof( Blip_Buffer ) );
-  if( ret ) {
-    blip_buffer_init( ret );
-  }
-  return ret;
+#ifdef BLIP_ASSERT
+	assert( count >= 0 );
+#endif
+
+	if ( count > blip_samples_avail(m) )
+		count = blip_samples_avail(m);
+
+	if ( count )
+	{
+#ifdef BLIP_MONO
+		buf_t const* in = m->buffer;
+		buf_t sum = m->integrator;
+#else
+		buf_t const* in = m->buffer[0];
+		buf_t const* in2 = m->buffer[1];
+		buf_t sum = m->integrator[0];
+		buf_t sum2 = m->integrator[1];
+#endif
+		buf_t const* end = in + count;
+		int step = stereo ? 1 : 0;
+		do
+		{
+			/* Eliminate fraction */
+			buf_t s = ARITH_SHIFT( sum, lpf_frac );
+#ifdef DEBUG_BLIP
+			printf("%d %d\n", sum, s); fflush(stdout);
+#endif
+
+			sum += *in++;
+
+			CLAMP( s );
+
+			*out++ = s;
+			out += step;
+
+#ifndef BLIP_MONO
+			/* Eliminate fraction */
+			s = ARITH_SHIFT( sum2, lpf_frac );
+
+			sum2 += *in2++;
+
+			CLAMP( s );
+
+			*out++ = s;
+			out += step;
+#endif
+		}
+		while ( in != end );
+
+#ifdef BLIP_MONO
+		m->integrator = sum;
+#else
+		m->integrator[0] = sum;
+		m->integrator[1] = sum2;
+#endif
+		remove_samples( m, count );
+	}
+
+	return count;
 }
 
-void
-delete_Blip_Buffer( Blip_Buffer ** buff )
+int blip_mix_samples( blip_t* m1, blip_t* m2, blip_t* m3, short out [], int count)
 {
-  if( !*buff )
-    return;
+#ifdef BLIP_ASSERT
+	assert( count >= 0 );
+#endif
 
-  blip_buffer_end( *buff );
-  free( *buff );
-  *buff = NULL;
+	if ( count > blip_samples_avail(m1) )
+		count = blip_samples_avail(m1);
+	if ( count > blip_samples_avail(m2) )
+		count = blip_samples_avail(m2);
+	if ( count > blip_samples_avail(m3) )
+		count = blip_samples_avail(m3);
+
+	if ( count )
+	{
+		buf_t const* end;
+		buf_t const* in[3];
+#ifdef BLIP_MONO
+		buf_t sum = m1->integrator;
+		in[0] = m1->buffer;
+		in[1] = m2->buffer;
+		in[2] = m3->buffer;
+#else
+		buf_t sum = m1->integrator[0];
+		buf_t sum2 = m1->integrator[1];
+		buf_t const* in2[3];
+		in[0] = m1->buffer[0];
+		in[1] = m2->buffer[0];
+		in[2] = m3->buffer[0];
+		in2[0] = m1->buffer[1];
+		in2[1] = m2->buffer[1];
+		in2[2] = m3->buffer[1];
+#endif
+
+		end = in[0] + count;
+		do
+		{
+			/* Eliminate fraction */
+			buf_t s = ARITH_SHIFT( sum, lpf_frac );
+
+			sum += *in[0]++;
+			sum += *in[1]++;
+			sum += *in[2]++;
+
+			CLAMP( s );
+
+			*out++ = s;
+
+#ifndef BLIP_MONO
+			/* Eliminate fraction */
+			s = ARITH_SHIFT( sum2, lpf_frac );
+
+			sum2 += *in2[0]++;
+			sum2 += *in2[1]++;
+			sum2 += *in2[2]++;
+
+			CLAMP( s );
+
+			*out++ = s;
+#endif
+		}
+		while ( in[0] != end );
+
+#ifdef BLIP_MONO
+		m1->integrator = sum;
+#else
+		m1->integrator[0] = sum;
+		m1->integrator[1] = sum2;
+#endif
+		remove_samples( m1, count );
+		remove_samples( m2, count );
+		remove_samples( m3, count );
+	}
+
+	return count;
 }
 
-static void
-blip_synth_init( Blip_Synth * synth )
+/* Things that didn't help performance on x86:
+	__attribute__((aligned(128)))
+	#define short int
+	restrict
+*/
+
+#ifndef BLIP_MONO
+
+void blip_add_delta( blip_t* m, unsigned time, int delta_l, int delta_r )
 {
-  synth->impulses =
-    malloc( ( BLIP_RES * ( BLIP_SYNTH_QUALITY / 2 ) +
-              1 ) * sizeof( imp_t ) * 4 );
-  if( synth->impulses ) {
-    _blip_synth_init( &synth->impl, ( short * )synth->impulses );       /* sorry, somewhere imp_t, somewhere short ???? */
-  }
-}
+	if (!(delta_l | delta_r)) return;
 
-static void
-blip_synth_end( Blip_Synth * synth )
-{
-  if( synth->impulses ) {
-    free( synth->impulses );
-    synth->impulses = NULL;
-  }
-}
+	//debug_me("blip_add_delta", time);
 
-Blip_Synth *
-new_Blip_Synth( void )
-{
-  Blip_Synth *ret;
+	fixed_t fixed = (fixed_t) (time * m->factor + m->offset);
+	int pos = fixed >> time_bits;
 
-  ret = malloc( sizeof( Blip_Synth ) );
-  if( ret ) {
-    blip_synth_init( ret );
-    if( !ret->impulses ) {
-      free( ret );
-      return NULL;
-    }
-  }
-  return ret;
-}
+#ifdef DEBUG_BLIP
+	//printf("[blip_add_delta] %lld %d %d %d %d\n", fixed, pos, time, delta_l, delta_r); fflush(stdout);
+#endif
 
-void
-delete_Blip_Synth( Blip_Synth ** synth )
-{
-  if( !*synth )
-    return;
+#ifdef BLIP_INVERT
+	buf_t* out_l = m->buffer[1] + pos;
+	buf_t* out_r = m->buffer[0] + pos;
+#else
+	buf_t* out_l = m->buffer[0] + pos;
+	buf_t* out_r = m->buffer[1] + pos;
+#endif
 
-  blip_synth_end( *synth );
-  free( *synth );
-  *synth = NULL;
-}
+#ifdef BLIP_ASSERT
+	/* Fails if buffer size was exceeded */
+	assert( pos <= m->size );
+#endif
 
-void
-blip_buffer_clear( Blip_Buffer * buff, int entire_buffer )
-{
-  buff->offset_ = 0;
-  buff->reader_accum = 0;
-  if( buff->buffer_ ) {
-    long count =
-      ( entire_buffer ? buff->
-        buffer_size_ : blip_buffer_samples_avail( buff ) );
-    memset( buff->buffer_, 0, ( count + BUFFER_EXTRA ) * sizeof( buf_t_ ) );
-  }
-}
-
-blargg_err_t
-blip_buffer_set_sample_rate( Blip_Buffer * buff, long new_rate, int msec )
-{
-  /* start with maximum length that resampled time can represent */
-  long new_size = ( ULONG_MAX >> BLIP_BUFFER_ACCURACY ) - BUFFER_EXTRA - 64;
-
-  if( msec != BLIP_MAX_LENGTH ) {
-    long s = ( new_rate * ( msec + 1 ) + 999 ) / 1000;
-
-    if( s < new_size )
-      new_size = s;
-  }
-
-  if( buff->buffer_size_ != new_size ) {
-    void *p =
-      realloc( buff->buffer_,
-               ( new_size + BUFFER_EXTRA ) * sizeof( buf_t_ ) );
-    if( !p )
-      return "Out of memory";
-    buff->buffer_ = ( buf_t_ * ) p;
-  }
-
-  buff->buffer_size_ = new_size;
-
-  /* update things based on the sample rate */
-  buff->sample_rate_ = new_rate;
-  buff->length_ = new_size * 1000 / new_rate - 1;
-  if( buff->clock_rate_ )
-    blip_buffer_set_clock_rate( buff, buff->clock_rate_ );
-  blip_buffer_set_bass_freq( buff, buff->bass_freq_ );
-
-  blip_buffer_clear( buff, BLIP_BUFFER_DEF_ENTIRE_BUFF );
-
-  return 0;                     /*  success */
-}
-
-blip_resampled_time_t
-blip_buffer_clock_rate_factor( Blip_Buffer * buff, long clock_rate )
-{
-  double ratio = ( double )buff->sample_rate_ / clock_rate;
-
-  long factor = ( long )floor( ratio * ( 1L << BLIP_BUFFER_ACCURACY ) + 0.5 );
-
-  return ( blip_resampled_time_t ) factor;
-}
-
-void
-blip_buffer_set_bass_freq( Blip_Buffer * buff, int freq )
-{
-  int shift = 31;
-
-  long f;
-
-  buff->bass_freq_ = freq;
-  if( freq > 0 ) {
-    shift = 13;
-    f = ( freq << 16 ) / buff->sample_rate_;
-    while( ( f >>= 1 ) && --shift ) {};
-  }
-
-  buff->bass_shift = shift;
-}
-
-void
-blip_buffer_end_frame( Blip_Buffer * buff, blip_time_t t )
-{
-  buff->offset_ += t * buff->factor_;
-}
-
-inline void
-blip_buffer_remove_silence( Blip_Buffer * buff, long count )
-{
-  buff->offset_ -= ( blip_resampled_time_t ) count << BLIP_BUFFER_ACCURACY;
-}
-
-inline void
-blip_buffer_remove_samples( Blip_Buffer * buff, long count )
-{
-  long remain;
-
-  if( count ) {
-    blip_buffer_remove_silence( buff, count );
-
-    /*  copy remaining samples to beginning and clear old samples */
-    remain = blip_buffer_samples_avail( buff ) + BUFFER_EXTRA;
-    memmove( buff->buffer_, buff->buffer_ + count,
-             remain * sizeof( buf_t_ ) );
-    memset( buff->buffer_ + remain, 0, count * sizeof( buf_t_ ) );
-  }
-}
-
-/*  Blip_Synth_ */
-
-void
-_blip_synth_init( Blip_Synth_ * synth_, short *p )
-{
-  synth_->impulses = p;
-  synth_->volume_unit_ = 0.0;
-  synth_->kernel_unit = 0;
-  synth_->buf = NULL;
-  synth_->last_amp = 0;
-  synth_->delta_factor = 0;
-}
-
-#define PI 3.1415926535897932384626433832795029
-
-static void
-gen_sinc( float *out, int count, double oversample, double treble,
-          double cutoff )
-{
-  int i;
-
-  double maxh, rolloff, pow_a_n, to_angle;
-
-  if( cutoff > 0.999 )
-    cutoff = 0.999;
-  if( treble < -300.0 )
-    treble = -300.0;
-  if( treble > 5.0 )
-    treble = 5.0;
-
-  maxh = 4096.0;
-  rolloff = pow( 10.0, 1.0 / ( maxh * 20.0 ) * treble / ( 1.0 - cutoff ) );
-  pow_a_n = pow( rolloff, maxh - maxh * cutoff );
-  to_angle = PI / 2 / maxh / oversample;
-  for( i = 0; i < count; i++ ) {
-    double angle, c, cos_nc_angle, cos_nc1_angle, cos_angle, d, b, a;
-
-    angle = ( ( i - count ) * 2 + 1 ) * to_angle;
-    c = rolloff * cos( ( maxh - 1.0 ) * angle ) - cos( maxh * angle );
-    cos_nc_angle = cos( maxh * cutoff * angle );
-    cos_nc1_angle = cos( ( maxh * cutoff - 1.0 ) * angle );
-    cos_angle = cos( angle );
-
-    c = c * pow_a_n - rolloff * cos_nc1_angle + cos_nc_angle;
-    d = 1.0 + rolloff * ( rolloff - cos_angle - cos_angle );
-    b = 2.0 - cos_angle - cos_angle;
-    a = 1.0 - cos_angle - cos_nc_angle + cos_nc1_angle;
-
-    out[i] = ( float )( ( a * d + c * b ) / ( b * d ) );        /*  a / b + c / d */
-  }
-}
-
-static void
-blip_eq_generate( blip_eq_t * eq, float *out, int count )
-{
-  /* lower cutoff freq for narrow kernels with their wider transition band
-     (8 points->1.49, 16 points->1.15) */
-  int i;
-
-  double to_fraction, cutoff;
-
-  double oversample = BLIP_RES * 2.25 / count + 0.85;
-
-  double half_rate = eq->sample_rate * 0.5;
-
-  if( eq->cutoff_freq )
-    oversample = half_rate / eq->cutoff_freq;
-
-  cutoff = eq->rolloff_freq * oversample / half_rate;
-
-  gen_sinc( out, count, BLIP_RES * oversample, eq->treble, cutoff );
-
-  /* apply (half of) hamming window */
-  to_fraction = PI / ( count - 1 );
-  for( i = count; i--; )
-    out[i] *= 0.54 - 0.46 * cos( i * to_fraction );
-
-}
-
-void
-_blip_synth_adjust_impulse( Blip_Synth_ * synth_ )
-{
-  /* sum pairs for each phase and add error correction to end of first half */
-  int size = _blip_synth_impulses_size( synth_ );
-
-  int i, p, p2, error;
-
-  for( p = BLIP_RES; p-- >= BLIP_RES / 2; ) {
-    error = synth_->kernel_unit;
-    p2 = BLIP_RES - 2 - p;
-    for( i = 1; i < size; i += BLIP_RES ) {
-      error -= synth_->impulses[i + p];
-      error -= synth_->impulses[i + p2];
-    }
-
-    if( p == p2 )
-      error /= 2;    /*  phase = 0.5 impulse uses same half for both sides */
-
-    synth_->impulses[size - BLIP_RES + p] += error;
-  }
+	blip_lpf_stereo(m->sample_rate, out_l, out_r, delta_l, delta_r);
 }
 
 
-void
-_blip_synth_treble_eq( Blip_Synth_ * synth_, blip_eq_t * eq )
+void blip_add_delta_fast( blip_t* m, unsigned time, int delta_l, int delta_r )
 {
-  double total, base_unit, rescale, sum, next, vol;
-
-  int impulses_size, i;
-
-  float fimpulse[BLIP_RES / 2 * ( BLIP_WIDEST_IMPULSE_ - 1 ) + BLIP_RES * 2];
-
-  int half_size = BLIP_RES / 2 * ( BLIP_SYNTH_WIDTH - 1 );
-
-  blip_eq_generate( eq, &fimpulse[BLIP_RES], half_size );
-
-  /* need mirror slightly past center for calculation */
-  for( i = BLIP_RES; i--; )
-    fimpulse[BLIP_RES + half_size + i] =
-      fimpulse[BLIP_RES + half_size - 1 - i];
-
-  /* starts at 0 */
-  for( i = 0; i < BLIP_RES; i++ )
-    fimpulse[i] = 0.0f;
-
-  /* find rescale factor */
-  total = 0.0;
-  for( i = 0; i < half_size; i++ )
-    total += fimpulse[BLIP_RES + i];
-
-/* double const base_unit = 44800.0 - 128 * 18;  allows treble up to +0 dB
-   double const base_unit = 37888.0;  allows treble to +5 dB */
-  base_unit = 32768.0;          /*  necessary for blip_unscaled to work */
-  rescale = base_unit / 2 / total;
-  synth_->kernel_unit = ( long )base_unit;
-
-  /* integrate, first difference, rescale, convert to int */
-  sum = 0.0;
-  next = 0.0;
-  impulses_size = _blip_synth_impulses_size( synth_ );
-
-  for( i = 0; i < impulses_size; i++ ) {
-    synth_->impulses[i] = ( short )floor( ( next - sum ) * rescale + 0.5 );
-    sum += fimpulse[i];
-    next += fimpulse[i + BLIP_RES];
-  }
-
-  _blip_synth_adjust_impulse( synth_ );
-
-  /* volume might require rescaling */
-  vol = synth_->volume_unit_;
-  if( vol ) {
-    synth_->volume_unit_ = 0.0;
-    _blip_synth_volume_unit( synth_, vol );
-  }
+	blip_add_delta(m, time, delta_l, delta_r);
 }
 
-void
-_blip_synth_volume_unit( Blip_Synth_ * synth_, double new_unit )
+#else
+
+void blip_add_delta( blip_t* m, unsigned time, int delta )
 {
-  if( new_unit != synth_->volume_unit_ ) {
-    double factor;
+	if (!delta) return;
 
-    /* use default eq if it hasn't been set yet */
-    if( !synth_->kernel_unit ) {
-      blip_eq_t eq = { -8.0, 0, 44100, 0 };
+	//debug_me("blip_add_delta", time);
 
-      _blip_synth_treble_eq( synth_, &eq );
-    }
+	fixed_t fixed = (fixed_t) (time * m->factor + m->offset);
+	int pos = fixed >> time_bits;
 
-    synth_->volume_unit_ = new_unit;
-    factor = new_unit * ( 1L << BLIP_SAMPLE_BITS ) / synth_->kernel_unit;
+#ifdef DEBUG_BLIP
+	printf("[blip_add_delta] %lld %d %d %d\n", fixed, pos, time, delta); fflush(stdout);
+#endif
 
-    if( factor > 0.0 ) {
-      int shift = 0;
+	buf_t* out = m->buffer + pos;
 
-      /* if unit is really small, might need to attenuate kernel */
-      while( factor < 2.0 ) {
-        shift++;
-        factor *= 2.0;
-      }
+#ifdef BLIP_ASSERT
+	/* Fails if buffer size was exceeded */
+	assert( pos <= m->size );
+#endif
 
-      if( shift ) {
-        /* keep values positive to avoid round-towards-zero of sign-preserving
-         * right shift for negative values */
-        long offset = 0x8000 + ( 1 << ( shift - 1 ) );
-
-        long offset2 = 0x8000 >> shift;
-
-        int i;
-
-        synth_->kernel_unit >>= shift;
-
-        for( i = _blip_synth_impulses_size( synth_ ); i--; )
-          synth_->impulses[i] =
-            ( short )( ( ( synth_->impulses[i] + offset ) >> shift ) -
-                       offset2 );
-
-        _blip_synth_adjust_impulse( synth_ );
-      }
-    }
-    synth_->delta_factor = ( int )floor( factor + 0.5 );
-  }
+	blip_lpf_mono(m->sample_rate, out, delta);
 }
 
-long
-blip_buffer_read_samples( Blip_Buffer * buff, blip_sample_t * out,
-                          long max_samples, int stereo )
+void blip_add_delta_fast( blip_t* m, unsigned time, int delta )
 {
-  long count = blip_buffer_samples_avail( buff );
+	blip_add_delta(m, time, delta);
+}
+#endif
 
-  if( count > max_samples )
-    count = max_samples;
+void blip_save_buffer_state(const blip_t *buf, blip_buffer_state_t *state)
+{
+#ifdef BLIP_MONO
+	state->integrator = buf->integrator;
+	if (buf->buffer && buf->size >= BLIP_BUFFER_STATE_BUFFER_SIZE)
+	{
+		memcpy(state->buffer, buf->buffer, sizeof(state->buffer));
+	}
+#else
+	int c;
+	for (c = 0; c < 2; c++)
+	{
+		state->integrator[c] = buf->integrator[c];
+		if (buf->buffer[c] && buf->size >= BLIP_BUFFER_STATE_BUFFER_SIZE)
+		{
+			memcpy(state->buffer[c], buf->buffer[c], sizeof(state->buffer[c]));
+		}
+	}
+#endif
+	state->offset = buf->offset;
+}
 
-  if( count ) {
-    int sample_shift = BLIP_SAMPLE_BITS - 16;
+void blip_load_buffer_state(blip_t *buf, const blip_buffer_state_t *state)
+{
+#ifdef BLIP_MONO
+	buf->integrator = state->integrator;
+	if (buf->buffer && buf->size >= BLIP_BUFFER_STATE_BUFFER_SIZE)
+	{
+		memcpy(buf->buffer, state->buffer, sizeof(state->buffer));
+	}
+#else
+	int c;
+	for (c = 0; c < 2; c++)
+	{
+		buf->integrator[c] = state->integrator[c];
+		if (buf->buffer[c] && buf->size >= BLIP_BUFFER_STATE_BUFFER_SIZE)
+		{
+			memcpy(buf->buffer[c], state->buffer[c], sizeof(state->buffer[c]));
+		}
+	}
+#endif
+	buf->offset = (fixed_t)state->offset;
+}
 
-    int my_bass_shift = buff->bass_shift;
+blip_buffer_state_t* blip_new_buffer_state()
+{
+	return (blip_buffer_state_t*)calloc(1, sizeof(blip_buffer_state_t));
+}
 
-    long accum = buff->reader_accum;
+void blip_delete_buffer_state(blip_buffer_state_t *state)
+{
+	if (state == NULL) return;
+	memset(state, 0, sizeof(blip_buffer_state_t));
+	free(state);
+}
 
-    buf_t_ *in = buff->buffer_;
 
-    if( !stereo ) {
-      int n;
+/* ################################# */
 
-      for( n = count; n--; ) {
-        long s = accum >> sample_shift;
 
-        accum -= accum >> my_bass_shift;
-        accum += *in++;
-        *out++ = ( blip_sample_t ) s;
+Blip_Buffer *new_Blip_Buffer( void )
+{
+#ifdef BLIP_MONO
+	return (Blip_Buffer *) blip_new(768000*2 * 2 / 50);
+#else
+	return (Blip_Buffer *) blip_new(768000*2 * 4 / 50);
+#endif
+}
 
-        /* clamp sample */
-        if( ( blip_sample_t ) s != s )
-          out[-1] = ( blip_sample_t ) ( 0x7FFF - ( s >> 24 ) );
-      }
-    } else {
-      int n;
+void delete_Blip_Buffer( Blip_Buffer ** buff )
+{
+	if (buff != NULL)
+	{
+		blip_delete(*buff);
+	}
+}
 
-      for( n = count; n--; ) {
-        long s = accum >> sample_shift;
+void blip_buffer_set_clock_rate( Blip_Buffer * buff, long cps )
+{
+#ifdef DEBUG_BLIP
+	printf("blip_buffer_set_clock_rate %d\n", cps); fflush(stdout);
+#endif
 
-        accum -= accum >> my_bass_shift;
-        accum += *in++;
-        *out = ( blip_sample_t ) s;
-        out += 2;
+	buff->clock_rate = cps;
+	blip_set_rates(buff, buff->clock_rate, buff->sample_rate );
+}
 
-        /* clamp sample */
-        if( ( blip_sample_t ) s != s )
-          out[-2] = ( blip_sample_t ) ( 0x7FFF - ( s >> 24 ) );
-      }
-    }
+char *blip_buffer_set_sample_rate( Blip_Buffer * buff, long samples_per_sec, int msec_length )
+{
+#ifdef DEBUG_BLIP
+	printf("blip_buffer_set_sample_rate %d\n", samples_per_sec); fflush(stdout);
+#endif
 
-    buff->reader_accum = accum;
-    blip_buffer_remove_samples( buff, count );
-  }
+	buff->sample_rate = samples_per_sec;
+	blip_set_rates(buff, buff->clock_rate, buff->sample_rate);
 
-  return count;
+	return 0;
+}
+
+long blip_buffer_read_samples( Blip_Buffer * buff, blip_sample_t * out, long max_samples, int stereo )
+{
+	return blip_read_samples(buff, out, max_samples, stereo);
+}
+
+void blip_buffer_end_frame( Blip_Buffer * buff, blip_time_t t )
+{
+	blip_end_frame(buff, t);
+}
+
+void blip_buffer_set_bass_freq( Blip_Buffer * buff, int frequency )
+{
+}
+
+
+struct blip_synth_t
+{
+	blip_t *blip;
+
+	int last_amp;
+	int volume;
+};
+
+
+Blip_Synth *new_Blip_Synth( void )
+{
+	Blip_Synth* m;
+  
+	m = (Blip_Synth*) malloc( sizeof *m );
+
+	m->volume = 100;
+	m->last_amp = 0;
+
+	return m;
+}
+
+void delete_Blip_Synth( Blip_Synth ** synth )
+{
+	if ( synth != NULL )
+	{
+		free(*synth);
+	}
+}
+
+void blip_synth_set_output( Blip_Synth * synth, Blip_Buffer * b )
+{
+	synth->blip = b;
+}
+
+void blip_synth_set_volume( Blip_Synth * synth, double v )
+{
+	synth->volume = (int) (v * 100.0);
+}
+
+void blip_synth_set_treble_eq( Blip_Synth * synth, double treble )
+{
+}
+
+void blip_synth_update( Blip_Synth * synth, blip_time_t t, int amp )
+{
+	int delta = amp - synth->last_amp;
+	synth->last_amp = amp;
+
+	delta = (delta * synth->volume) / 100;
+
+	blip_add_delta(synth->blip, t, delta);
 }
