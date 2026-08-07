@@ -72,8 +72,8 @@ ifneq ($(DEBUG),)
   CFLAGS   += -O0 -g
   CXXFLAGS += -O0 -g
 else
-  CFLAGS   += -O3 -DNDEBUG
-  CXXFLAGS += -O3 -DNDEBUG
+  CFLAGS   += -O3 -DNDEBUG -flto
+  CXXFLAGS += -O3 -DNDEBUG -flto
 endif
 
 ifneq ($(LOG_PERFORMANCE),)

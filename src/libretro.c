@@ -31,6 +31,12 @@
 
 #include "ui/uimedia.h"
 
+#include <sound/blipbuffer.h>
+
+static int master_volume = 100;
+static int fastload_speed = 100;
+static int fastload_counter = 0;
+
 static void dummy_log(enum retro_log_level level, const char *fmt, ...)
 {
    (void)level;
@@ -227,13 +233,13 @@ static uint16_t palettes[PALETTE_COUNT][16] = {
       RGB16(0x55ffff),RGB16(0x55ffff),RGB16(0xffffff),RGB16(0xffffff),
    },
    [PALETTE_CGA_8] = {
-      RGB16(0x000000),  RGB16(0xAAAA), RGB16(0xAA00AA), RGB16(0xAA00AA),
-      RGB16(0xAAAA),RGB16(0xAAAA),RGB16(0xAAAAAA),RGB16(0xAAAAAA),
+      RGB16(0x000000),RGB16(0x00AAAA),RGB16(0xAA00AA),RGB16(0xAA00AA),
+      RGB16(0x00AAAA),RGB16(0x00AAAA),RGB16(0xAAAAAA),RGB16(0xAAAAAA),
       RGB16(0x000000),RGB16(0x55ffff),RGB16(0xff55ff),RGB16(0xff55ff),
       RGB16(0x55ffff),RGB16(0x55ffff),RGB16(0xffffff),RGB16(0xffffff),
    },
    [PALETTE_CGA_16] = {
-      RGB16(0x000000),  RGB16(0x0000AA), RGB16(0xAA0000), RGB16(0xAA00AA),
+      RGB16(0x000000),RGB16(0x0000AA),RGB16(0xAA0000),RGB16(0xAA00AA),
       RGB16(0x00AA00),RGB16(0x00AAAA),RGB16(0xAA5500),RGB16(0xAAAAAA),
       RGB16(0x000000),RGB16(0x5555FF),RGB16(0xFF5555),RGB16(0xFF55FF),
       RGB16(0x55FF55),RGB16(0x55FFFF),RGB16(0xFFFF55),RGB16(0xffffff),
@@ -1077,6 +1083,14 @@ static const struct retro_variable core_vars[] =
    { "fuse_joypad_r2",      "Joypad R2 button mapping; " SPECTRUMKEYS },
    { "fuse_joypad_l3",      "Joypad L3 button mapping; " SPECTRUMKEYS },
    { "fuse_joypad_r3",      "Joypad R3 button mapping; " SPECTRUMKEYS },
+   { "fuse_sound_freq",	    "Internal Sound Rate  (Requires core reboot); 48000|96000|192000|384000|768000" },
+   { "fuse_sound_lowpass_freq",	"Sound Lowpass Rate; 24000|48000|96000|192000|384000|0" },
+   { "fuse_master_volume", "Master Volume; 100|102|104|106|108|110|112|114|116|118|120|122|124|126|128|130|132|134|136|138|140|142|144|146|148|150|152|154|156|158|160|162|164|166|168|170|172|174|176|178|180|182|184|186|188|190|192|194|196|198|200|0|2|4|6|8|10|12|14|16|18|20|22|24|26|28|30|32|34|36|38|40|42|44|46|48|50|52|54|56|58|60|62|64|66|68|70|72|74|76|78|80|82|84|86|88|90|92|94|96|98" },
+   { "fuse_beeper_volume", "Beeper Volume; 100|102|104|106|108|110|112|114|116|118|120|122|124|126|128|130|132|134|136|138|140|142|144|146|148|150|152|154|156|158|160|162|164|166|168|170|172|174|176|178|180|182|184|186|188|190|192|194|196|198|200|0|2|4|6|8|10|12|14|16|18|20|22|24|26|28|30|32|34|36|38|40|42|44|46|48|50|52|54|56|58|60|62|64|66|68|70|72|74|76|78|80|82|84|86|88|90|92|94|96|98" },
+   { "fuse_ay_volume", "AY Volume; 100|102|104|106|108|110|112|114|116|118|120|122|124|126|128|130|132|134|136|138|140|142|144|146|148|150|152|154|156|158|160|162|164|166|168|170|172|174|176|178|180|182|184|186|188|190|192|194|196|198|200|0|2|4|6|8|10|12|14|16|18|20|22|24|26|28|30|32|34|36|38|40|42|44|46|48|50|52|54|56|58|60|62|64|66|68|70|72|74|76|78|80|82|84|86|88|90|92|94|96|98" },
+   { "fuse_covox_volume", "Covox Volume; 100|102|104|106|108|110|112|114|116|118|120|122|124|126|128|130|132|134|136|138|140|142|144|146|148|150|152|154|156|158|160|162|164|166|168|170|172|174|176|178|180|182|184|186|188|190|192|194|196|198|200|0|2|4|6|8|10|12|14|16|18|20|22|24|26|28|30|32|34|36|38|40|42|44|46|48|50|52|54|56|58|60|62|64|66|68|70|72|74|76|78|80|82|84|86|88|90|92|94|96|98" },
+   { "fuse_specdrum_volume", "Specdrum Volume; 100|102|104|106|108|110|112|114|116|118|120|122|124|126|128|130|132|134|136|138|140|142|144|146|148|150|152|154|156|158|160|162|164|166|168|170|172|174|176|178|180|182|184|186|188|190|192|194|196|198|200|0|2|4|6|8|10|12|14|16|18|20|22|24|26|28|30|32|34|36|38|40|42|44|46|48|50|52|54|56|58|60|62|64|66|68|70|72|74|76|78|80|82|84|86|88|90|92|94|96|98" },
+   { "fuse_fast_load_speed", "Tape Fast Load Speed; 1000|1|5|10|25|50|75|100|200|300|400|500|600|700|800|900" },
    { NULL, NULL },
 };
 
@@ -1178,11 +1192,17 @@ int update_variables(int force)
          flags |= UPDATE_MACHINE;
       }
 
+<<<<<<< HEAD
       // Fuse always renders the full PAL-sized canvas (DISPLAY_SCREEN_HEIGHT
       // is a compile-time constant); the border modes carve a window out of
       // it in apply_border_size()
       unsigned width = machine->is_timex ? 640 : 320;
       unsigned height = machine->is_timex ? 576 : 288;
+=======
+      bool is_pal = machine->id != LIBSPECTRUM_MACHINE_48_NTSC && machine->id != LIBSPECTRUM_MACHINE_TS2068;
+      unsigned width = machine->is_timex ? 640 : 320;
+      unsigned height = is_pal ? (machine->is_timex ? 576 : 288) : (machine->is_timex ? 480 : 240);
+>>>>>>> 54c7c38 (Create a.yml)
 
       if (width != hard_width || height != hard_height || force)
       {
@@ -1258,12 +1278,16 @@ int update_variables(int force)
          libspectrum_free((void*)settings_current.speaker_type);
       }
 
+<<<<<<< HEAD
       settings_current.speaker_type = utils_safe_strdup(option == 1 ? "Beeper" : option == 2 ? "Unfiltered" : "TV speaker");
 
       if (opt_speaker_type != -1 && opt_speaker_type != option)
          sound_needs_reinit = 1;
 
       opt_speaker_type = option;
+=======
+      settings_current.speaker_type = utils_safe_strdup((option == 1) ? "Beeper" : (option == 2) ? "Unfiltered" : "TV speaker");
+>>>>>>> 8237447 (Create a.yml)
    }
 
    {
@@ -1275,12 +1299,16 @@ int update_variables(int force)
          libspectrum_free((void*)settings_current.stereo_ay);
       }
 
+<<<<<<< HEAD
       settings_current.stereo_ay = utils_safe_strdup(option == 1 ? "ACB" : option == 2 ? "ABC" : "None");
 
       if (opt_stereo_ay != -1 && opt_stereo_ay != option)
          sound_needs_reinit = 1;
 
       opt_stereo_ay = option;
+=======
+      settings_current.stereo_ay = utils_safe_strdup((option == 1) ? "ACB" : (option == 2) ? "ABC" : "None");
+>>>>>>> 8237447 (Create a.yml)
    }
 
    {
@@ -1321,7 +1349,7 @@ int update_variables(int force)
    {
       const char* value;
       int option = coreopt(env_cb, core_vars, "fuse_key_hold_time", &value);
-      keyb_hold_time = option >= 0 ? strtoll(value, NULL, 10) * 1000LL : 500000LL;
+      keyb_hold_time = (option >= 0) ? strtoll(value, NULL, 10) * 1000LL : 500000LL;
    }
 
 
@@ -1392,6 +1420,75 @@ int update_variables(int force)
 
    option = coreopt(env_cb, core_vars, "fuse_joypad_start", &value );
    joymap[ RETRO_DEVICE_ID_JOYPAD_START ] = spectrum_key_from_option(option);
+
+   {
+      const char* value;
+      int option = coreopt(env_cb, core_vars, "fuse_sound_freq", &value);
+
+      settings_current.sound_freq = (option >= 0) ? strtol(value, NULL, 10) : 48000;
+   }
+
+   {
+      const char* value;
+	  extern void set_blip_cutoff(int rate);
+
+      int option = coreopt(env_cb, core_vars, "fuse_sound_lowpass_freq", &value);
+      set_blip_cutoff( (option >= 0) ? strtol(value, NULL, 10) : 24000 );
+   }
+
+   {
+      const char* value;
+      int option = coreopt(env_cb, core_vars, "fuse_master_volume", &value);
+
+      master_volume = (option >= 0) ? strtol(value, NULL, 10) : 100;
+   }
+
+   {
+      const char* value;
+      int option = coreopt(env_cb, core_vars, "fuse_beeper_volume", &value);
+
+      option = (option >= 0) ? strtol(value, NULL, 10) : 100;
+      option = (option * master_volume) / 100;
+
+      settings_current.volume_beeper = option;
+   }
+
+   {
+      const char* value;
+      int option = coreopt(env_cb, core_vars, "fuse_ay_volume", &value);
+
+      option = (option >= 0) ? strtol(value, NULL, 10) : 100;
+      option = (option * master_volume) / 100;
+
+      settings_current.volume_ay = option;
+   }
+
+   {
+      const char* value;
+      int option = coreopt(env_cb, core_vars, "fuse_covox_volume", &value);
+
+      option = (option >= 0) ? strtol(value, NULL, 10) : 100;
+      option = (option * master_volume) / 100;
+
+      settings_current.volume_covox = option;
+   }
+
+   {
+      const char* value;
+      int option = coreopt(env_cb, core_vars, "fuse_specdrum_volume", &value);
+
+      option = (option >= 0) ? strtol(value, NULL, 10) : 100;
+      option = (option * master_volume) / 100;
+
+      settings_current.volume_specdrum = option;
+   }
+
+   {
+      const char* value;
+      int option = coreopt(env_cb, core_vars, "fuse_fast_load_speed", &value);
+
+      fastload_speed = (option >= 0) ? strtol(value, NULL, 10) : 1000;
+   }
 
    return flags;
 }
@@ -2482,8 +2579,13 @@ void retro_get_system_av_info(struct retro_system_av_info *info)
    info->geometry.max_width = MAX_WIDTH;
    info->geometry.max_height = MAX_HEIGHT;
    info->geometry.aspect_ratio = 0.0f;
+<<<<<<< HEAD
    info->timing.fps = machine_id_is_60hz(machine->id) ? 60.0 : 50.0;
    info->timing.sample_rate = 44100.0;
+=======
+   info->timing.fps = (machine->id == LIBSPECTRUM_MACHINE_48_NTSC) ? 60.0 : 50.0;
+   info->timing.sample_rate = settings_current.sound_freq;
+>>>>>>> 54c7c38 (Create a.yml)
 }
 
 static void render_video(void)
@@ -2499,8 +2601,13 @@ static void render_video(void)
          if (machine->is_timex)
          {
             const uint16_t* src1 = keyboard_overlay;
+<<<<<<< HEAD
             const uint16_t* src2 = image_buffer + (48 * hard_width); // Centre doubled 480px overlay in 576px canvas
             uint16_t* dest = image_buffer_2 + (48 * hard_width);     // Centre doubled 480px overlay in 576px canvas
+=======
+            const uint16_t* src2 = image_buffer + (24 * hard_width); // Offset by 24px
+            uint16_t* dest = image_buffer_2 + (24 * hard_width);    // Offset by 24px
+>>>>>>> 54c7c38 (Create a.yml)
             int x, y;
 
             if (keyb_transparent)
@@ -2553,7 +2660,11 @@ static void render_video(void)
                const uint16_t* src1 = keyboard_overlay;
                const uint16_t* src2 = image_buffer + (24 * hard_width); // Offset by 24px
                const uint16_t* end = src1 + (240 * 320);                // Limit to 240px height
+<<<<<<< HEAD
                uint16_t* dest = image_buffer_2 + (24 * hard_width);    // Offset by 24px
+=======
+               uint16_t* dest = image_buffer_2 + (24 * hard_width);     // Offset by 24px
+>>>>>>> 54c7c38 (Create a.yml)
 
                while (src1 < end)
                {
@@ -2753,6 +2864,29 @@ void retro_run(void)
       if (flags & UPDATE_MACHINE)
       {
          machine_select( machine->id );
+      }
+
+      fuse_emulation_pause();  /* sound volume */
+      fuse_emulation_unpause();
+   }
+
+   if (settings_current.fastload)
+   {
+      //fastload_counter += 1;
+      fastload_counter %= 1000;
+
+      //if (fastload_speed > fastload_counter)
+      if (fastload_speed == 1000)
+	  {
+         settings_current.accelerate_loader = 1;
+         settings_current.tape_traps = 1;
+         settings_current.slt_traps = 1;
+      }
+      else
+      {
+         settings_current.accelerate_loader = 0;
+         settings_current.tape_traps = 0;
+         settings_current.slt_traps = 1;
       }
    }
 
@@ -3326,7 +3460,7 @@ void retro_unload_game(void)
 
 unsigned retro_get_region(void)
 {
-   return machine->id == LIBSPECTRUM_MACHINE_48_NTSC ? RETRO_REGION_NTSC : RETRO_REGION_PAL;
+   return (machine->id == LIBSPECTRUM_MACHINE_48_NTSC) ? RETRO_REGION_NTSC : RETRO_REGION_PAL;
 }
 
 // Dummy callbacks for the UI
