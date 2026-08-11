@@ -246,19 +246,18 @@ compat_fd compat_file_open(const char *path, int write)
       The old code also passed MAX_PATH_LEN as strncat()'s third argument.
       That parameter bounds how much is *appended*, not the size of the
       destination, so a long system directory would have run off the end
-      of this buffer. fill_pathname_join_special() takes the real
-      destination size and inserts exactly one separator. */
+      of this buffer */
    {
       char base[MAX_PATH_LEN];
       const char *leaf = path;
 
       /* Append the name as a relative element: a leading separator would
-         make fill_pathname_join_special() produce "dir\\\\name". */
+         make fill_pathname_join() produce "dir\\\\name". */
       while (*leaf == '/' || *leaf == '\\')
          leaf++;
 
-      fill_pathname_join_special(base, sys, "fuse", sizeof(base));
-      fill_pathname_join_special(system, base, leaf, sizeof(system));
+      fill_pathname_join(base, sys, "fuse", sizeof(base));
+      fill_pathname_join(system, base, leaf, sizeof(system));
       pathname_conform_slashes_to_os(system);
    }
    log_cb(RETRO_LOG_INFO, "Trying to open \"%s\" from the file system\n", system);
