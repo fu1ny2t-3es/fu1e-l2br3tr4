@@ -159,6 +159,19 @@
 #define YYDEBUG 1
 #define YYERROR_VERBOSE
 
+/* The parser's state and value stacks are automatic arrays of YYINITDEPTH
+   entries, so this constant is the size of yyparse()'s frame: 4032 bytes
+   at the bison default of 200. debugger_check() calls into here from
+   readbyte()/writebyte() and so from the z80 instruction loop, which puts
+   that frame on the emulation stack on frontends whose core thread has
+   little to spare. Measured depth over the debugger's command set is 8,
+   and rises by one per level of parenthesis nesting in a condition
+   expression; 64 leaves room for 58 levels before the parser has to grow.
+   Growing is not an error and not an alloca: YYSTACK_USE_ALLOCA is unset
+   in the generated parser, so the stacks move to malloc() and back on
+   YYMAXDEPTH terms, verified here to 512 levels. */
+#define YYINITDEPTH 64
+
 
 
 /* Enabling traces.  */
