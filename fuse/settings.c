@@ -2778,7 +2778,7 @@ settings_write_config( settings_info *settings )
 static int
 read_config_file( settings_info *settings )
 {
-  const char *cfgdir; char path[ PATH_MAX ];
+  const char *cfgdir; char *path;
   int error;
 
   utils_file file;
@@ -2793,6 +2793,16 @@ read_config_file( settings_info *settings )
      No directory means no config file. */
   if( !*cfgdir ) return 0;
 
+  /* PATH_MAX bytes, on the heap rather than in this frame. Every caller
+     reaches here through fuse_init() on the content-loading path, and on
+     every frontend but PS3 compat_get_config_path() is empty and the
+     function has already returned two lines above - so an automatic array
+     here reserved 4 KB in the prologue to run a single comparison.
+     Scoping it to the branch does not help: GCC lays the array out in the
+     frame regardless of the block it is declared in. */
+  path = libspectrum_malloc_n( PATH_MAX, sizeof( *path ) );
+  if( !path ) return 1;
+
   snprintf( path, PATH_MAX, "%s/%s", cfgdir, CONFIG_FILE_NAME );
 
   /* See if the file exists; if it doesn't, it's not a problem.
@@ -2802,10 +2812,13 @@ read_config_file( settings_info *settings )
      happened to leave behind, so it cannot be used to tell a missing file
      from a real failure. Absence was already the non-error case, so treat
      every negative answer as "no config file to read". */
-  if( !path_is_valid( path ) )
+  if( !path_is_valid( path ) ) {
+    libspectrum_free( path );
     return 0;
+  }
 
   error = utils_read_file( path, &file );
+  libspectrum_free( path );
   if( error ) {
     ui_error( UI_ERROR_ERROR, "error reading config file" );
     return 1;
