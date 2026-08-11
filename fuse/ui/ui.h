@@ -41,7 +41,6 @@
 #include "peripherals/disk/opus.h"
 #include "peripherals/disk/plusd.h"
 #include "svg.h"
-#include "ui/scaler/scaler.h"
 
 /* The various severities of error level, increasing downwards */
 typedef enum ui_error_level {
@@ -304,7 +303,6 @@ int ui_widget_init( void );
 int ui_widget_end( void );
 
 /* How many levels deep have we recursed through widgets; -1 => none */
-extern int ui_widget_level;
 
 /* widget system popup the apropriate menu */
 void ui_popup_menu( int native_key );

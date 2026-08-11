@@ -52,7 +52,6 @@
 #include "peripherals/if2.h"
 #include "pokefinder/pokemem.h"
 #include "rzx.h"
-#include "screenshot.h"
 #include "settings.h"
 #include "snapshot.h"
 #include "tape.h"
@@ -422,30 +421,6 @@ utils_read_auxiliary_file( const char *filename, utils_file *file,
 
   error = utils_read_fd( fd, filename, file );
   if( error ) return error;
-
-  return 0;
-}
-
-int
-utils_read_screen( const char *filename, utils_file *screen )
-{
-  int error;
-
-  error = utils_read_auxiliary_file( filename, screen, UTILS_AUXILIARY_LIB );
-  if( error == -1 ) {
-    ui_error( UI_ERROR_ERROR, "couldn't find screen picture ('%s')",
-	      filename );
-    return 1;
-  }
-
-  if( error ) return error;
-
-  if( screen->length != STANDARD_SCR_SIZE ) {
-    utils_close_file( screen );
-    ui_error( UI_ERROR_ERROR, "screen picture ('%s') is not %d bytes long",
-	      filename, STANDARD_SCR_SIZE );
-    return 1;
-  }
 
   return 0;
 }

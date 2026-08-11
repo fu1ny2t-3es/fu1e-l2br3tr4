@@ -51,7 +51,6 @@ int utils_write_file( const char *filename, const unsigned char *buffer,
 int utils_find_file_path( const char *filename, char *path,
                           utils_aux_type type );
 
-int utils_read_screen( const char *filename, utils_file *screen );
 
 char* utils_safe_strdup( const char *src );
 

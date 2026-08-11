@@ -46,7 +46,6 @@
 #include "peripherals/spectranet.h"
 #include "peripherals/ula.h"
 #include "peripherals/usource.h"
-#include "profile.h"
 #include "rzx.h"
 #include "settings.h"
 #include "slt.h"
@@ -140,13 +139,6 @@ z80_do_opcodes( void )
 #endif				/* #ifdef __GNUC__ */
 
   while( tstates < event_next_event ) {
-
-    /* Profiler */
-    CHECK( profile, profile_active )
-
-    profile_map( PC );
-
-    END_CHECK
 
     /* If we're due an end of frame from RZX playback, generate one */
     CHECK( rzx, rzx_playback )

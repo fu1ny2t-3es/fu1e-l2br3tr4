@@ -364,7 +364,133 @@ int ui_error_specific(ui_error_level severity, const char *message)
    case UI_ERROR_ERROR:   log_cb(RETRO_LOG_ERROR, "%s\n", message); break;
    }
   
-   return fuse_ui_error_specific(severity, message);
+   return 0;
+}
+
+/* The rest of Fuse's ui_* surface, stubbed. Fuse's emulation core calls
+   these to keep a desktop frontend's chrome in sync - statusbar icons,
+   menu item enable/disable, the tape browser, file dialogs, the
+   debugger's windows. This core has none of that chrome: the frontend
+   owns the UI and the core options own the configuration, so every one
+   of these is a report into the void or a question with only one
+   answer. They lived in fuse/ui/widget/ before the widget UI was
+   removed - where they were equally inert, since widget_do() bailed
+   out on display_ui_initialised, which no code in this build ever
+   sets. */
+
+int ui_statusbar_update(ui_statusbar_item item, ui_statusbar_state state)
+{
+   (void)item;
+   (void)state;
+   return 0;
+}
+
+int ui_statusbar_update_speed(float speed)
+{
+   (void)speed;
+   return 0;
+}
+
+int ui_menu_item_set_active(const char *path, int active)
+{
+   (void)path;
+   (void)active;
+   return 0;
+}
+
+int ui_tape_browser_update(ui_tape_browser_update_type change,
+                           libspectrum_tape_block *block)
+{
+   (void)change;
+   (void)block;
+   return 0;
+}
+
+/* NULL is the "user cancelled" answer for both file dialogs: the
+   callers (tape write, +3 disk save, ui_mdr_write) all treat it as
+   "give up quietly", which is right for a core that cannot prompt. */
+char *ui_get_open_filename(const char *title)
+{
+   (void)title;
+   return NULL;
+}
+
+char *ui_get_save_filename(const char *title)
+{
+   (void)title;
+   return NULL;
+}
+
+int ui_query(const char *message)
+{
+   (void)message;
+   return 0;
+}
+
+/* Media with unsaved changes is ejected without prompting, matching what
+   the previous widget implementation resolved to with confirm_actions
+   off. Data loss on eject is the frontend's disk-control contract. */
+ui_confirm_save_t ui_confirm_save_specific(const char *message)
+{
+   (void)message;
+   return UI_CONFIRM_SAVE_DONTSAVE;
+}
+
+/* Identical decision to the widget implementation with joy_prompt off,
+   which is this core's only configuration: a snapshot recording a
+   joystick maps it onto joystick 1 and everything else is left alone. */
+ui_confirm_joystick_t ui_confirm_joystick(libspectrum_joystick libspectrum_type,
+                                          int inputs)
+{
+   (void)libspectrum_type;
+
+   if (inputs & LIBSPECTRUM_JOYSTICK_INPUT_JOYSTICK_1)
+      return UI_CONFIRM_JOYSTICK_JOYSTICK_1;
+
+   return UI_CONFIRM_JOYSTICK_NONE;
+}
+
+int ui_widgets_reset(void)
+{
+   return 0;
+}
+
+void ui_pokemem_selector(const char *filename)
+{
+   (void)filename;
+}
+
+/* -1 is "no rollback point chosen"; rzx.c abandons the rollback. */
+int ui_get_rollback_point(GSList *points)
+{
+   (void)points;
+   return -1;
+}
+
+void ui_breakpoints_updated(void)
+{
+}
+
+int ui_debugger_activate(void)
+{
+   return 0;
+}
+
+int ui_debugger_deactivate(int interruptable)
+{
+   (void)interruptable;
+   return 0;
+}
+
+int ui_debugger_update(void)
+{
+   return 0;
+}
+
+int ui_debugger_disassemble(libspectrum_word address)
+{
+   (void)address;
+   return 0;
 }
 
 int ui_end(void)

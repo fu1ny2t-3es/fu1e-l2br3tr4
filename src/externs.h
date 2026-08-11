@@ -66,7 +66,6 @@ extern keysyms_map_t keysyms_map[];
 extern uint16_t *palette;
 
 int update_variables(int);
-int fuse_ui_error_specific(ui_error_level, const char*);
 
 // From Fuse
 extern settings_info settings_current;

@@ -13,8 +13,6 @@ SOURCES_C += $(CORE_DIR)/src/coreopt.c
 SOURCES_C += $(CORE_DIR)/src/missing.c
 SOURCES_C += $(CORE_DIR)/src/version.c
 
-SOURCES_C += $(CORE_DIR)/src/fuse/scalers16.c
-SOURCES_C += $(CORE_DIR)/src/fuse/scalers32.c
 
 SOURCES_C += $(CORE_DIR)/src/compat/dir.c
 SOURCES_C += $(CORE_DIR)/src/compat/display.c
@@ -120,26 +118,7 @@ SOURCES_C += $(CORE_DIR)/fuse/sound/blipbuffer.c
 SOURCES_C += $(CORE_DIR)/fuse/timer/timer.c
 SOURCES_C += $(CORE_DIR)/fuse/timer/native.c
 
-SOURCES_C += $(CORE_DIR)/fuse/ui/widget/browse.c
-SOURCES_C += $(CORE_DIR)/fuse/ui/widget/debugger.c
-SOURCES_C += $(CORE_DIR)/src/fuse/error.c
-SOURCES_C += $(CORE_DIR)/fuse/ui/widget/filesel.c
-SOURCES_C += $(CORE_DIR)/fuse/ui/widget/memory.c
-SOURCES_C += $(CORE_DIR)/fuse/ui/widget/menu.c
-SOURCES_C += $(CORE_DIR)/fuse/ui/widget/menu_data.c
-SOURCES_C += $(CORE_DIR)/fuse/ui/widget/options.c
-SOURCES_C += $(CORE_DIR)/fuse/ui/widget/picture.c
-SOURCES_C += $(CORE_DIR)/fuse/ui/widget/pokemem.c
-SOURCES_C += $(CORE_DIR)/fuse/ui/widget/pokefinder.c
-SOURCES_C += $(CORE_DIR)/fuse/ui/widget/query.c
-SOURCES_C += $(CORE_DIR)/fuse/ui/widget/roms.c
-SOURCES_C += $(CORE_DIR)/fuse/ui/widget/select.c
-SOURCES_C += $(CORE_DIR)/fuse/ui/widget/text.c
-SOURCES_C += $(CORE_DIR)/fuse/ui/widget/widget.c
-SOURCES_C += $(CORE_DIR)/fuse/ui/widget/about.c
-SOURCES_C += $(CORE_DIR)/fuse/ui/widget/binary.c
 
-SOURCES_C += $(CORE_DIR)/fuse/ui/scaler/scaler.c
 
 SOURCES_C += $(CORE_DIR)/fuse/unittests/unittests.c
 
@@ -156,16 +135,13 @@ SOURCES_C += $(CORE_DIR)/fuse/loader.c
 SOURCES_C += $(CORE_DIR)/fuse/machine.c
 SOURCES_C += $(CORE_DIR)/fuse/memory_pages.c
 SOURCES_C += $(CORE_DIR)/fuse/mempool.c
-SOURCES_C += $(CORE_DIR)/fuse/menu.c
-SOURCES_C += $(CORE_DIR)/fuse/movie.c
 SOURCES_C += $(CORE_DIR)/fuse/module.c
 SOURCES_C += $(CORE_DIR)/fuse/periph.c
-SOURCES_C += $(CORE_DIR)/fuse/profile.c
 SOURCES_C += $(CORE_DIR)/fuse/psg.c
 SOURCES_C += $(CORE_DIR)/fuse/rectangle.c
 SOURCES_C += $(CORE_DIR)/fuse/rzx.c
-SOURCES_C += $(CORE_DIR)/fuse/screenshot.c
 SOURCES_C += $(CORE_DIR)/src/fuse/settings.c
+SOURCES_C += $(CORE_DIR)/src/fuse/options_enumerate.c
 SOURCES_C += $(CORE_DIR)/fuse/slt.c
 SOURCES_C += $(CORE_DIR)/src/fuse/snapshot.c
 SOURCES_C += $(CORE_DIR)/fuse/sound.c

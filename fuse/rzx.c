@@ -38,7 +38,6 @@
 #include "fuse.h"
 #include "infrastructure/startup_manager.h"
 #include "machine.h"
-#include "movie.h"
 #include "peripherals/ula.h"
 #include "rzx.h"
 #include "settings.h"
@@ -193,7 +192,6 @@ int rzx_stop_recording( void )
 
   /* Stop recording data */
   rzx_recording = 0;
-  if( settings_current.movie_stop_after_rzx ) movie_stop();
 
   /* Embed final snapshot */
   if( !rzx_competition_mode ) rzx_add_snap( rzx, 0 );
@@ -392,7 +390,6 @@ int rzx_stop_playback( int add_interrupt )
   if( !rzx_playback ) return 0;
 
   rzx_playback = 0;
-  if( settings_current.movie_stop_after_rzx ) movie_stop();
 
   ui_menu_activate( UI_MENU_ITEM_RECORDING, 0 );
   ui_menu_activate( UI_MENU_ITEM_RECORDING_ROLLBACK, 0 );

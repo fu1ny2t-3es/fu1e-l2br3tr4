@@ -25,7 +25,6 @@
 
 #include "event.h"
 #include "infrastructure/startup_manager.h"
-#include "movie.h"
 #include "phantom_typist.h"
 #include "settings.h"
 #include "sound.h"
@@ -138,32 +137,6 @@ timer_register_startup( void )
                             timer_end );
 }
 
-#ifdef SOUND_FIFO
-
-/* Callback-style sound based timer */
-#include "sound/sfifo.h"
-
-extern sfifo_t sound_fifo;
-
-static void
-timer_frame_callback_sound( libspectrum_dword last_tstates )
-{
-  for(;;) {
-
-    /* Sleep while fifo is full */
-    if( sfifo_space( &sound_fifo ) < sound_framesiz ) {
-      timer_sleep( TEN_MS );
-    } else {
-      break;
-    }
-
-  }
-
-  event_add( last_tstates + machine_current->timings.tstates_per_frame,
-             timer_event );
-}
-
-#else                           /* #ifdef SOUND_FIFO */
 
 /* Blocking socket-style sound based timer */
 static void
@@ -173,7 +146,6 @@ timer_frame_callback_sound( libspectrum_dword last_tstates )
              timer_event );
 }
   
-#endif                          /* #ifdef SOUND_FIFO */
 
 void
 timer_start_fastloading( void )

@@ -63,7 +63,6 @@
 #include "machines/machines_periph.h"
 #include "memory_pages.h"
 #include "module.h"
-#include "movie.h"
 #include "mempool.h"
 #include "peripherals/ay.h"
 #include "peripherals/dck.h"
@@ -93,10 +92,8 @@
 #include "peripherals/usource.h"
 #include "phantom_typist.h"
 #include "pokefinder/pokemem.h"
-#include "profile.h"
 #include "psg.h"
 #include "rzx.h"
-#include "screenshot.h"
 #include "settings.h"
 #include "slt.h"
 #include "snapshot.h"
@@ -104,7 +101,6 @@
 #include "spectrum.h"
 #include "tape.h"
 #include "timer/timer.h"
-#include "ui/scaler/scaler.h"
 #include "ui/ui.h"
 #include "ui/uimedia.h"
 #include "unittests/unittests.h"
@@ -325,11 +321,9 @@ run_startup_manager( int *argc, char ***argv )
   phantom_typist_register_startup();
   plusd_register_startup();
   printer_register_startup();
-  profile_register_startup();
   psg_register_startup();
   rzx_register_startup();
   scld_register_startup();
-  screenshot_register_startup();
   settings_register_startup();
   setuid_register_startup();
   simpleide_register_startup();
@@ -356,7 +350,6 @@ run_startup_manager( int *argc, char ***argv )
 static int fuse_init(int argc, char **argv)
 {
   int error, first_arg;
-  char *start_scaler;
   start_files_t start_files;
 
   /* Seed the bad but widely-available random number
@@ -387,27 +380,14 @@ static int fuse_init(int argc, char **argv)
     return 0;
   }
 
-  start_scaler = utils_safe_strdup( settings_current.start_scaler_mode );
-
   fuse_show_copyright();
 
-  /* Everything between here and the scaler_select_id() below owns
-     start_scaler and has to release it before bailing out. machine_select_id()
-     is a path users reach: selecting a model whose ROMs are not installed
-     fails there, and a libretro core retries on the next content load rather
-     than exiting. */
-  if( run_startup_manager( &argc, &argv ) ) {
-    libspectrum_free( start_scaler );
-    return 1;
-  }
+  /* machine_select_id() is a path users reach: selecting a model whose ROMs
+     are not installed fails there, and a libretro core retries on the next
+     content load rather than exiting. */
+  if( run_startup_manager( &argc, &argv ) ) return 1;
 
   error = machine_select_id( settings_current.start_machine );
-  if( error ) {
-    libspectrum_free( start_scaler );
-    return error;
-  }
-
-  error = scaler_select_id( start_scaler ); libspectrum_free( start_scaler );
   if( error ) return error;
 
   if( setup_start_files( &start_files ) ) return 1;
@@ -420,7 +400,6 @@ static int fuse_init(int argc, char **argv)
   if( ui_mouse_present ) ui_mouse_grabbed = ui_mouse_grab( 1 );
 
   fuse_emulation_paused = 0;
-  movie_init();
 
   return 0;
 }
@@ -997,7 +976,6 @@ do_start_files( start_files_t *start_files )
 /* Tidy-up function called at end of emulation */
 static int fuse_end(void)
 {
-  movie_stop();		/* stop movie recording */
 
   startup_manager_run_end();
 

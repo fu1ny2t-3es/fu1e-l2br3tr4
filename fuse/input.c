@@ -236,11 +236,6 @@ keypress( const input_event_key_t *event )
 {
   int swallow;
 
-  if( ui_widget_level >= 0 ) {
-    ui_widget_keyhandler( event->native_key );
-    return 0;
-  }
-
   /* Escape => ask UI to end mouse grab, return if grab ended */
   if( event->native_key == INPUT_KEY_Escape && ui_mouse_grabbed ) {
     ui_mouse_grabbed = ui_mouse_release( 0 );
@@ -364,24 +359,6 @@ do_joystick( const input_event_joystick_t *joystick_event, int press )
 {
   int which;
 
-#ifdef USE_WIDGET
-  if( ui_widget_level >= 0 ) {
-    if( press ) ui_widget_keyhandler( joystick_event->button );
-    return 0;
-  }
-
-#ifndef GEKKO /* Home button opens the menu on Wii */
-  switch( joystick_event->button ) {
-  case INPUT_JOYSTICK_FIRE_2:
-    if( press ) ui_popup_menu( INPUT_KEY_F1 );
-    break;
-
-  default: break;		/* Remove gcc warning */
-
-  }
-#endif  /* #ifndef GEKKO */
-
-#endif				/* #ifdef USE_WIDGET */
 
   which = joystick_event->which;
 

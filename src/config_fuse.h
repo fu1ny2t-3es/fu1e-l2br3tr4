@@ -191,9 +191,6 @@
 /* Defined if we're going to be using the installed libpng */
 /* #undef USE_LIBPNG */
 
-/* Defined if we're using a widget-based UI */
-#define USE_WIDGET 1
-
 /* Version number of package */
 #define VERSION "1.6.0"
 

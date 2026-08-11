@@ -38,12 +38,8 @@
 #include "tape.h"
 #include "ui/ui.h"
 #include "ui/uimedia.h"
-#include "ui/widget/widget.h"
 
 #define MESSAGE_MAX_LENGTH 256
-
-/* We don't start in a widget */
-int ui_widget_level = -1;
 
 static char last_message[ MESSAGE_MAX_LENGTH ] = "";
 static size_t frames_since_last_message = 0;
@@ -775,19 +771,6 @@ ui_mdr_write( int which, int saveas )
   return err;
 }
 
-#ifdef USE_WIDGET
-int
-ui_widget_init( void )
-{
-  return widget_init();
-}
-
-int
-ui_widget_end( void )
-{
-  return widget_end();
-}
-#else
 int
 ui_widget_init( void )
 {
@@ -809,4 +792,3 @@ void
 ui_widget_keyhandler( int native_key )
 {
 }
-#endif				/* #ifndef USE_WIDGET */
