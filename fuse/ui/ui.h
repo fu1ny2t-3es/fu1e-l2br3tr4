@@ -291,20 +291,6 @@ char *ui_get_open_filename( const char *title );
 char *ui_get_save_filename( const char *title );
 int ui_query( const char *message );
 
-#ifdef USE_WIDGET
-#include "ui/widget/widget.h"
-#define ui_widget_finish() widget_finish()
-#else				/* #ifdef USE_WIDGET */
-#define ui_widget_finish()
-#endif				/* #ifdef USE_WIDGET */
-
-/* Code called at start and end of emulation if widget system is used */
-int ui_widget_init( void );
-int ui_widget_end( void );
-
-/* How many levels deep have we recursed through widgets; -1 => none */
-
-/* widget system popup the apropriate menu */
 void ui_popup_menu( int native_key );
 
 void ui_widget_keyhandler( int native_key );

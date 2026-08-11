@@ -771,18 +771,6 @@ ui_mdr_write( int which, int saveas )
   return err;
 }
 
-int
-ui_widget_init( void )
-{
-  return 0;
-}
-
-int
-ui_widget_end( void )
-{
-  return 0;
-}
-
 void
 ui_popup_menu( int native_key )
 {
