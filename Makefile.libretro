@@ -504,11 +504,35 @@ endif
 DEFINES := $(PLATFORM_DEFINES)
 DEFINES += -DHAVE_CONFIG_H
 
-CFLAGS   += $(fpic) $(DEFINES)
+# Give the linker per-symbol granularity so it can drop what nothing calls.
+# This core links whole vendored trees for the sake of a few entry points:
+# bzip2 for BZ2_bzBuffToBuffDecompress (its compression half, blocksort and
+# the FILE* API included, is never called), libretro-common for the VFS and
+# path helpers (filestream_vscanf, filestream_copy and friends are not),
+# fuse's own utils_find_file_path/utils_find_auxiliary_file and
+# settings_write_config have no callers left after the UI removal. Without
+# -ffunction-sections the linker's unit is the whole object file, so one
+# live symbol keeps every dead one beside it. Trimming those functions out
+# of the vendored sources instead would put this tree further out of step
+# with upstream, which is what broke the static-link builds in the first
+# place, so let the linker decide rather than the source.
+#
+# Static-linking platforms get the flags too but not the --gc-sections
+# below: they build an archive and it is the frontend's link that resolves
+# it, so the sections are there for RetroArch's linker to use.
+SECTION_FLAGS := -ffunction-sections -fdata-sections
+
+CFLAGS   += $(fpic) $(DEFINES) $(SECTION_FLAGS)
 CFLAGS   += -Wall
 
-CXXFLAGS += $(fpic) $(DEFINES)
+CXXFLAGS += $(fpic) $(DEFINES) $(SECTION_FLAGS)
 CXXFLAGS += -Wall
+
+ifneq ($(STATIC_LINKING), 1)
+   ifneq (,$(findstring -shared,$(SHARED)))
+      SHARED += -Wl,--gc-sections
+   endif
+endif
 
 LDFLAGS += $(LIBM)
 
