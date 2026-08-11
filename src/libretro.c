@@ -242,6 +242,9 @@ static int show_emulation_speed_at_startup;
 static int display_joystick_type;
 static int display_emulation_speed;
 static int periph_needs_update = 0;
+/* Set alongside periph_needs_update when the peripheral that changed is one
+   the machine cannot gain or lose while running - see retro_run(). */
+static int periph_needs_reset = 0;
 static void sync_periph_from_ports_and_options(void);
 
 static int sound_needs_reinit = 0;
@@ -2362,14 +2365,42 @@ void retro_run(void)
 
    if (periph_needs_update)
    {
-      periph_needs_update = 0;
-      // periph_posthook() rather than periph_update(): the Fuller Box and
-      // Melodik both declare hard_reset, and plugging or unplugging a real
-      // one is not something the running machine survives. periph_posthook()
-      // only resets when a peripheral that needs it actually changed, so the
-      // Kempston Mouse path through here still behaves as it did.
-      periph_posthook();
+      int needs_reset = periph_needs_reset;
+
+      periph_needs_update = periph_needs_reset = 0;
+
+      // periph_posthook() is periph_update() plus a machine_reset(1) if any
+      // peripheral that declares hard_reset changed, which is what fitting
+      // or removing a Fuller Box, Melodik or uSpeech has to do. The Kempston
+      // Mouse declares hard_reset too - Fuse resets on it because there it
+      // is an options dialog toggle - but here it is the frontend wiring a
+      // pointer to a port, which is not a statement about the machine's
+      // hardware and must not throw the running program away. Only take the
+      // resetting path when sync_periph_from_ports_and_options() saw one of
+      // the peripherals that genuinely needs it change.
+      if (needs_reset)
+         periph_posthook();
+      else
+         periph_update();
    }
+
+   // Fuse turns sound off for the duration of a fastload (sound_pause() from
+   // timer_start_fastloading()) and leaves it to timer_stop_fastloading() to
+   // bring it back when the tape stops. A machine_reset() partway through
+   // one - which periph_posthook() above can do, and which the frontend can
+   // provoke before the first frame has even run - clears the tape and
+   // phantom typist state that reset would have come from, so the unpause is
+   // simply dropped and sound_enabled stays clear for the rest of the
+   // session. That is worse than silence: with sound off timer_frame() falls
+   // through to its real-time throttle instead of returning early, and that
+   // loop cannot make progress under this frontend's clock (see
+   // src/compat/timer.c), so the core hangs inside event_do_events() with
+   // the frontend unable to do anything about it. Re-arm the unpause here.
+   // sound_unpause() declines by itself while a fastload really is running,
+   // and sound_init() returns immediately when sound is already up, so this
+   // costs one load per frame in the normal case.
+   if (!sound_enabled)
+      sound_unpause();
 
    if (sound_needs_reinit)
    {
@@ -2609,21 +2640,31 @@ static void sync_periph_from_ports_and_options(void)
    // last applied so that refusal stands until the user changes the option.
    settings_current.uspeech = opt_uspeech;
 
-   if (settings_current.kempston_mouse != kempston_mouse ||
-       settings_current.fuller != fuller ||
-       settings_current.melodik != opt_melodik ||
-       applied_uspeech != opt_uspeech)
+   // The Kempston Mouse is kept apart from the other three because it is the
+   // only one here that must not reset the machine when it changes: see the
+   // comment on the deferred update in retro_run(). Registering and
+   // deregistering its three read ports is all it needs.
+   if (settings_current.kempston_mouse != kempston_mouse)
    {
       settings_current.kempston_mouse = kempston_mouse;
-      settings_current.fuller = fuller;
-      settings_current.melodik = opt_melodik;
-      applied_uspeech = opt_uspeech;
 
       // See the comment in retro_set_controller_port_device(): defer the
       // actual peripheral update to the top of retro_run() rather than
       // calling it here synchronously.
       if (fuse_init_called)
          periph_needs_update = 1;
+   }
+
+   if (settings_current.fuller != fuller ||
+       settings_current.melodik != opt_melodik ||
+       applied_uspeech != opt_uspeech)
+   {
+      settings_current.fuller = fuller;
+      settings_current.melodik = opt_melodik;
+      applied_uspeech = opt_uspeech;
+
+      if (fuse_init_called)
+         periph_needs_update = periph_needs_reset = 1;
    }
 }
 
