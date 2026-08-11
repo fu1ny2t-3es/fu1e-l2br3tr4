@@ -26,6 +26,7 @@
 #include <pokefinder/pokemem.h>
 #include <periph.h>
 #include <sound.h>
+#include <snapshot.h>
 #include <timer/timer.h>
 
 #include "ui/uimedia.h"
@@ -2529,37 +2530,68 @@ void retro_deinit(void)
    }
 }
 
-// Re-derive every Fuse peripheral setting whose authoritative value lives
-// outside the emulated machine: live frontend port wiring, and core options.
-//
 // Kempston Mouse is a single peripheral, not per-port; enable it in Fuse
 // whenever any port is currently configured as a mouse, disable it
 // otherwise. The Fuller Box is the same shape of problem in reverse - its
 // joystick port (0x7f) and its AY (0x3f/0x5f) are one periph_t, so wiring a
 // Fuller joystick to a port has to switch the whole box on regardless of
-// the fuse_fuller_box option.
+// the fuse_fuller_box option. Both callers below have to agree on how the
+// option and the port wiring combine, hence the shared helper.
+static void resolve_port_peripherals(int *kempston_mouse, int *fuller)
+{
+   unsigned p;
+
+   *kempston_mouse = 0;
+   *fuller = opt_fuller;
+
+   for (p = 0; p < MAX_PADS; p++)
+   {
+      if (input_devices[p] == RETRO_DEVICE_KEMPSTON_MOUSE)
+         *kempston_mouse = 1;
+      else if (input_devices[p] == RETRO_DEVICE_FULLER_JOYSTICK)
+         *fuller = 1;
+   }
+}
+
+// Called from snapshot_copy_from(), after module_snapshot_enabled() has
+// copied the peripheral flags out of the file and before machine_reset()
+// turns settings_current into an actual peripheral table. Assigns only; the
+// reset that follows is what applies these, so there is deliberately no
+// periph_needs_update here.
+void libretro_snapshot_periph_override(void)
+{
+   int kempston_mouse;
+   int fuller;
+
+   resolve_port_peripherals(&kempston_mouse, &fuller);
+
+   settings_current.kempston_mouse = kempston_mouse;
+   settings_current.fuller = fuller;
+   settings_current.melodik = opt_melodik;
+   settings_current.uspeech = opt_uspeech;
+   settings_current.issue2 = opt_issue2;
+}
+
+// Re-derive every Fuse peripheral setting whose authoritative value lives
+// outside the emulated machine: live frontend port wiring, and core options.
 //
 // None of this is emulated machine state, so it must be re-applied after a
 // snapshot/rewind restore too: kempmouse_snapshot_enabled(),
 // fuller_enabled_snapshot(), melodik_enabled_snapshot(),
 // uspeech_enabled_snapshot() and ula_from_snapshot() all overwrite the
-// corresponding settings_current fields with whatever was true at the moment that particular state was
-// captured (e.g. still off, if rewound back to before the mouse was ever
-// connected), which can otherwise leave a peripheral disabled even though
-// the frontend has it wired up right now.
+// corresponding settings_current fields with whatever was true at the
+// moment that particular state was captured (e.g. still off, if rewound
+// back to before the mouse was ever connected), which can otherwise leave a
+// peripheral disabled even though the frontend has it wired up right now.
+// libretro_snapshot_periph_override() gets there first for anything loaded
+// through snapshot_copy_from(); this remains the path for option and port
+// changes made while already running.
 static void sync_periph_from_ports_and_options(void)
 {
-   unsigned p;
-   int kempston_mouse = 0;
-   int fuller = opt_fuller;
+   int kempston_mouse;
+   int fuller;
 
-   for (p = 0; p < MAX_PADS; p++)
-   {
-      if (input_devices[p] == RETRO_DEVICE_KEMPSTON_MOUSE)
-         kempston_mouse = 1;
-      else if (input_devices[p] == RETRO_DEVICE_FULLER_JOYSTICK)
-         fuller = 1;
-   }
+   resolve_port_peripherals(&kempston_mouse, &fuller);
 
    // Issue 2 only changes what ula_write() latches for the unused keyboard
    // bits; no port (de)registration is involved, so it never needs a

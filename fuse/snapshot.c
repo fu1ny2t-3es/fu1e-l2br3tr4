@@ -87,6 +87,18 @@ snapshot_copy_from( libspectrum_snap *snap )
   periph_disable_optional();
   module_snapshot_enabled( snap );
 
+#ifdef __LIBRETRO__
+  /* Which optional peripherals are plugged in is frontend configuration
+     here, not emulated machine state, so the core options outrank whatever
+     module_snapshot_enabled() just read out of the file. Do it now rather
+     than after the load: machine_reset() below builds the peripheral table
+     from settings_current, and module_snapshot_from() restores the
+     registers and RAM afterwards. Correcting it later instead would mean
+     a second reset, which for a peripheral declaring hard_reset throws
+     away the snapshot that was just loaded. */
+  libretro_snapshot_periph_override();
+#endif
+
   machine = libspectrum_snap_machine( snap );
 
   settings_current.late_timings = libspectrum_snap_late_timings( snap );
