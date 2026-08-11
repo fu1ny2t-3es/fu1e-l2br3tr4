@@ -34,11 +34,7 @@
 #include "peripherals/specdrum.h"
 #include "spectrum.h"
 
-#ifdef __LIBRETRO__
 typedef libspectrum_byte (*spectrum_unattached_port_fn)( libspectrum_word port );
-#else
-typedef libspectrum_byte (*spectrum_unattached_port_fn)( void );
-#endif
 
 /* How long do things take to happen; fields are pulled from libspectrum
    via the libspectrum_timings_* functions */
@@ -81,9 +77,7 @@ typedef struct fuse_machine_info {
 						  attached to anything */
 
   ayinfo ay;		/* The AY-3-8912 chip */
-#ifdef __LIBRETRO__
   ayinfo ay2;		/* Second AY-3-8912 chip (TurboSound) */
-#endif
 
   specdrum_info specdrum; /* SpecDrum settings */
 

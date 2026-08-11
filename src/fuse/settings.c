@@ -29,10 +29,6 @@ int settings_init(int *first_arg, int argc, char **argv)
       Forcing it on here left the Fuller Box AY permanently decoded at ports
       0x3f/0x5f on every machine, so plain 48K titles that poke those ports
       (Vixen, Andy Capp, ...) got AY music no real 48K would have produced. */
-#ifndef __LIBRETRO__
-   settings_current.joystick_1_output = 1;
-   settings_current.joystick_2_output = 2;
-#endif
    
    update_variables(1);
    return res;

@@ -51,7 +51,6 @@ static void ay_to_snapshot( libspectrum_snap *snap );
 static libspectrum_dword get_current_register( void );
 static void set_current_register( libspectrum_dword value );
 
-#ifdef __LIBRETRO__
 /* TurboSound: a second AY-3-8912 chip, selected via the classic NedoPC
    protocol - writing a value with its top 5 bits all set (0xF8-0xFF, never
    a valid register index since a single AY only has registers 0-15) to the
@@ -73,13 +72,6 @@ current_ay( void )
 {
   return current_ay_chip() ? &machine_current->ay2 : &machine_current->ay;
 }
-#else
-static ayinfo *
-current_ay( void )
-{
-  return &machine_current->ay;
-}
-#endif
 
 static module_info_t ay_module_info = {
 
@@ -182,12 +174,10 @@ ay_reset( int hard_reset GCC_UNUSED )
   ay->current_register = 0;
   memset( ay->registers, 0, sizeof( ay->registers ) );
 
-#ifdef __LIBRETRO__
   machine_current->ay2.current_register = 0;
   memset( machine_current->ay2.registers, 0,
           sizeof( machine_current->ay2.registers ) );
   ay_turbosound_active_chip = 0;
-#endif
 }
 
 /* What happens when the AY register port (traditionally 0xfffd on the 128K
@@ -228,12 +218,10 @@ ay_registerport_read( libspectrum_word port GCC_UNUSED, libspectrum_byte *attach
 void
 ay_registerport_write( libspectrum_word port GCC_UNUSED, libspectrum_byte b )
 {
-#ifdef __LIBRETRO__
   if( ay_turbosound_enabled && ( b & 0xf8 ) == 0xf8 ) {
     ay_turbosound_active_chip = b & 1;
     return;
   }
-#endif
   set_current_register( b );
 }
 
@@ -249,7 +237,6 @@ ay_dataport_write( libspectrum_word port GCC_UNUSED, libspectrum_byte b )
   current = ay->current_register;
 
   ay->registers[ current ] = b & mask[ current ];
-#ifdef __LIBRETRO__
   sound_ay_write( current_ay_chip(), current, b, tstates );
   /* The .psg recording format and the serial-out port only cover a single
      chip; only chip A's I/O port pins are wired to anything on real
@@ -258,11 +245,6 @@ ay_dataport_write( libspectrum_word port GCC_UNUSED, libspectrum_byte b )
     if( psg_recording ) psg_write_register( current, b );
     if( current == 14 ) printer_serial_write( b );
   }
-#else
-  sound_ay_write( current, b, tstates );
-  if( psg_recording ) psg_write_register( current, b );
-  if( current == 14 ) printer_serial_write( b );
-#endif
 }
 
 void
@@ -276,15 +258,10 @@ ay_state_from_snapshot( libspectrum_snap *snap )
   for( i = 0; i < AY_REGISTERS; i++ ) {
     machine_current->ay.registers[i] =
       libspectrum_snap_ay_registers( snap, i );
-#ifdef __LIBRETRO__
     sound_ay_write( 0, i, machine_current->ay.registers[i], 0 );
-#else
-    sound_ay_write( i, machine_current->ay.registers[i], 0 );
-#endif
   }
 }
 
-#ifdef __LIBRETRO__
 void
 ay2_state_from_snapshot( libspectrum_snap *snap )
 {
@@ -306,21 +283,18 @@ ay2_state_from_snapshot( libspectrum_snap *snap )
     sound_ay_write( 1, i, machine_current->ay2.registers[i], 0 );
   }
 }
-#endif
 
 static void
 ay_from_snapshot( libspectrum_snap *snap )
 {
   if( machine_current->capabilities & LIBSPECTRUM_MACHINE_CAPABILITY_AY ) {
     ay_state_from_snapshot( snap );
-#ifdef __LIBRETRO__
     /* Restored unconditionally, like chip A above, regardless of whether
        TurboSound is currently enabled: harmless if disabled (chip B's
        registers just sit unused - see current_ay_chip()), and safe for
        snapshots that predate this chunk (its accessors default to zero,
        same as any other absent chunk's fields). */
     ay2_state_from_snapshot( snap );
-#endif
   }
 }
 
@@ -337,7 +311,6 @@ ay_to_snapshot( libspectrum_snap *snap )
     libspectrum_snap_set_ay_registers( snap, i,
 				       machine_current->ay.registers[i] );
 
-#ifdef __LIBRETRO__
   /* Written unconditionally, like chip A above - see the write side of
      the AY2 chunk in libspectrum/szx.c for why this must not depend on
      the (live-toggleable) ay_turbosound_enabled option. */
@@ -351,7 +324,6 @@ ay_to_snapshot( libspectrum_snap *snap )
   for( i = 0; i < AY_REGISTERS; i++ )
     libspectrum_snap_set_ay2_registers( snap, i,
                                         machine_current->ay2.registers[i] );
-#endif
 }
 
 static libspectrum_dword

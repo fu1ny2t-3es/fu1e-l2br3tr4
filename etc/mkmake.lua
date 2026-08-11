@@ -61,7 +61,7 @@ PLATLDXFLAGS   = ${PLAT_LDXFLAGS}
 ################
 # libretro setup
 
-RETRODEFS     = -D__LIBRETRO__
+RETRODEFS     =
 RETROCFLAGS   =
 RETROCXXFLAGS =
 RETROLDFLAGS  =

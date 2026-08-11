@@ -50,7 +50,7 @@ PLATLDXFLAGS   = -shared -lm -mthumb -mcpu=cortex-a9 -mfloat-abi=hard
 ################
 # libretro setup
 
-RETRODEFS     = -D__LIBRETRO__
+RETRODEFS     =
 RETROCFLAGS   =
 RETROCXXFLAGS =
 RETROLDFLAGS  =

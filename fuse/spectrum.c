@@ -72,9 +72,7 @@ static const char * const frame_count_name = "frames";
 
 /* Count of frames since last reset */
 static libspectrum_dword frames_since_reset;
-#ifdef __LIBRETRO__
 static libspectrum_word last_floating_bus_amstrad_value = 0xff;
-#endif
 
 static void
 spectrum_reset( int hard_reset )
@@ -231,11 +229,7 @@ spectrum_contend_delay_76543210( libspectrum_dword time )
 
 /* What happens if we read from an unattached port? */
 libspectrum_byte
-#ifdef __LIBRETRO__
 spectrum_unattached_port(libspectrum_word port)
-#else
-spectrum_unattached_port( void )
-#endif
 {
   int line, tstates_through_line, column;
 
@@ -303,21 +297,14 @@ spectrum_unattached_port( void )
 }
 
 libspectrum_byte
-#ifdef __LIBRETRO__
 spectrum_unattached_port_none( libspectrum_word port )
-#else
-spectrum_unattached_port_none( void )
-#endif
 {
-#ifdef __LIBRETRO__
   /* Make compiler happy */
   (void) port;
-#endif
   return 0xff;
 }
 
 
-#ifdef __LIBRETRO__
 /**
  *  References:
  *   http://sky.relative-path.com/zx/floating_bus.html
@@ -426,5 +413,4 @@ spectrum_unattached_port_amstrad( libspectrum_word port )
   return (game) ? 0xff : last_floating_bus_amstrad_value;
 
 }
-#endif
 

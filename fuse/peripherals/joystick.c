@@ -296,10 +296,6 @@ joystick_enabled_snapshot( libspectrum_snap *snap )
     }
 
     if( settings_current.joystick_keyboard_output != fuse_type &&
-#ifndef __LIBRETRO__
-        settings_current.joystick_1_output != fuse_type &&
-        settings_current.joystick_2_output != fuse_type &&
-#endif
         !rzx_playback ) {
       switch( ui_confirm_joystick( libspectrum_snap_joystick_list(snap,i),
                                    libspectrum_snap_joystick_inputs(snap,i)) ) {
@@ -317,13 +313,13 @@ joystick_enabled_snapshot( libspectrum_snap *snap )
       }
     }
 
-    /* If the snap was configured for a Kempston joystick, enable
-       our Kempston emulation in case the snap was reading from
-       the joystick to prevent things going haywire */
-#ifndef __LIBRETRO__
-    if( fuse_type == JOYSTICK_TYPE_KEMPSTON )
-#endif
-      settings_current.joy_kempston = 1;
+    /* Enable our Kempston emulation whatever joystick the snap was
+       configured for, in case the snap was reading from the joystick, to
+       prevent things going haywire. (Upstream Fuse only does this when the
+       snap's joystick really is a Kempston; this core has always done it
+       unconditionally, since the frontend's port wiring, not the snapshot,
+       decides what the user is actually holding.) */
+    settings_current.joy_kempston = 1;
   }
 }
 

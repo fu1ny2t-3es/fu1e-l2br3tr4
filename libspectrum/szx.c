@@ -87,12 +87,10 @@ static const libspectrum_word ZXSTRF_COMPRESSED = 1;
 static const libspectrum_byte ZXSTAYF_FULLERBOX = 1;
 static const libspectrum_byte ZXSTAYF_128AY = 2;
 
-#ifdef __LIBRETRO__
 /* Non-standard chunk: second AY-3-8912 chip (TurboSound). Not part of the
    real SZX spec - only ever written/read by this core, for round-tripping
    save states/rewind. Standard SZX readers safely skip unknown chunks. */
 #define ZXSTBID_AY2 "AY2\0"
-#endif
 
 #define ZXSTBID_MULTIFACE "MFCE"
 static const libspectrum_byte ZXSTMF_PAGEDIN = 1;
@@ -294,11 +292,9 @@ write_rom_chunk( libspectrum_buffer *buffer, libspectrum_buffer *block_data,
 static void
 write_ay_chunk( libspectrum_buffer *buffer, libspectrum_buffer *data,
                 libspectrum_snap *snap );
-#ifdef __LIBRETRO__
 static void
 write_ay2_chunk( libspectrum_buffer *buffer, libspectrum_buffer *data,
                  libspectrum_snap *snap );
-#endif
 static void
 write_scld_chunk( libspectrum_buffer *buffer, libspectrum_buffer *data,
                   libspectrum_snap *snap );
@@ -512,7 +508,6 @@ read_ay_chunk( libspectrum_snap *snap, libspectrum_word version GCC_UNUSED,
   return LIBSPECTRUM_ERROR_NONE;
 }
 
-#ifdef __LIBRETRO__
 static libspectrum_error
 read_ay2_chunk( libspectrum_snap *snap, libspectrum_word version GCC_UNUSED,
 	        const libspectrum_byte **buffer,
@@ -541,7 +536,6 @@ read_ay2_chunk( libspectrum_snap *snap, libspectrum_word version GCC_UNUSED,
 
   return LIBSPECTRUM_ERROR_NONE;
 }
-#endif /* #ifdef __LIBRETRO__ */
 
 static libspectrum_error
 read_b128_chunk( libspectrum_snap *snap, libspectrum_word version GCC_UNUSED,
@@ -2571,9 +2565,7 @@ struct read_chunk_t {
 static struct read_chunk_t read_chunks[] = {
 
   { ZXSTBID_AY,		         read_ay_chunk   },
-#ifdef __LIBRETRO__
   { ZXSTBID_AY2,	         read_ay2_chunk  },
-#endif
   { ZXSTBID_BETA128,	         read_b128_chunk },
   { ZXSTBID_BETADISK,	         skip_chunk      },
   { ZXSTBID_COVOX,	         read_covx_chunk },
@@ -2654,14 +2646,12 @@ read_chunk( libspectrum_snap *snap, libspectrum_word version,
   error = read_chunk_header( id, &data_length, buffer, end );
   if( error ) return error;
 
-#ifdef __LIBRETRO__
   /* Hack to keep all snapshots with the same size*/
   if (memcmp(id, "\xFF\xFF\xFF\xFF", 4) == 0)
   {
     *buffer = end;
     return LIBSPECTRUM_ERROR_NONE;
   }
-#endif
 
   if( end - *buffer < data_length ) {
     libspectrum_print_error(
@@ -2823,7 +2813,6 @@ libspectrum_szx_read( libspectrum_snap *snap, const libspectrum_byte *buffer,
   ctx->swap_af = 0;
 
   while( buffer < end ) {
-#ifdef __LIBRETRO__
     /* This core pads fixed-size savestates (and auto-size states that have
        shrunk below the frontend's frozen buffer size) with 0xFF - see
        retro_serialize(). A pad tail of 8+ bytes is caught as the fake
@@ -2836,7 +2825,6 @@ libspectrum_szx_read( libspectrum_snap *snap, const libspectrum_byte *buffer,
       while( pad < end && *pad == 0xFF ) pad++;
       if( pad == end ) break;
     }
-#endif
     error = read_chunk( snap, version, &buffer, end, ctx );
     if( error ) {
       libspectrum_free( ctx );
@@ -2910,7 +2898,6 @@ libspectrum_szx_write( libspectrum_buffer *buffer, int *out_flags,
       capabilities & LIBSPECTRUM_MACHINE_CAPABILITY_AY ) {
     write_ay_chunk( buffer, block_data, snap );
 
-#ifdef __LIBRETRO__
     /* Written under the same condition as the primary AY chip above (not
        ay_turbosound_enabled, which can change mid-session via the
        fuse_turbosound core option without a content reload): frontends
@@ -2921,7 +2908,6 @@ libspectrum_szx_write( libspectrum_buffer *buffer, int *out_flags,
        same, session-constant condition as chip A keeps the size stable
        regardless of whether TurboSound is actually turned on. */
     write_ay2_chunk( buffer, block_data, snap );
-#endif
   }
 
   if( capabilities & ( LIBSPECTRUM_MACHINE_CAPABILITY_TIMEX_MEMORY |
@@ -3003,7 +2989,6 @@ libspectrum_szx_write( libspectrum_buffer *buffer, int *out_flags,
     }
   }
 
-#ifdef __LIBRETRO__
   /* Written unconditionally (like write_joy_chunk() below), not gated on
      kempston_mouse_active: this core's Kempston Mouse peripheral can be
      connected/disconnected mid-session via retro_set_controller_port_device(),
@@ -3014,11 +2999,6 @@ libspectrum_szx_write( libspectrum_buffer *buffer, int *out_flags,
      from that point on. write_amxm_chunk() already encodes "no mouse" as
      ZXSTM_NONE, so writing it unconditionally is lossless. */
   write_amxm_chunk( buffer, block_data, snap );
-#else
-  if( libspectrum_snap_kempston_mouse_active( snap ) ) {
-    write_amxm_chunk( buffer, block_data, snap );
-  }
-#endif
 
   if( libspectrum_snap_simpleide_active( snap ) ) {
     write_side_chunk( buffer, block_data, snap );
@@ -3584,7 +3564,6 @@ write_ay_chunk( libspectrum_buffer *buffer, libspectrum_buffer *data,
   write_chunk( buffer, ZXSTBID_AY, data );
 }
 
-#ifdef __LIBRETRO__
 static void
 write_ay2_chunk( libspectrum_buffer *buffer, libspectrum_buffer *data,
                  libspectrum_snap *snap )
@@ -3604,7 +3583,6 @@ write_ay2_chunk( libspectrum_buffer *buffer, libspectrum_buffer *data,
 
   write_chunk( buffer, ZXSTBID_AY2, data );
 }
-#endif /* #ifdef __LIBRETRO__ */
 
 static void
 write_scld_chunk( libspectrum_buffer *buffer, libspectrum_buffer *data,

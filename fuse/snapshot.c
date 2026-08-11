@@ -87,7 +87,6 @@ snapshot_copy_from( libspectrum_snap *snap )
   periph_disable_optional();
   module_snapshot_enabled( snap );
 
-#ifdef __LIBRETRO__
   /* Which optional peripherals are plugged in is frontend configuration
      here, not emulated machine state, so the core options outrank whatever
      module_snapshot_enabled() just read out of the file. Do it now rather
@@ -97,7 +96,6 @@ snapshot_copy_from( libspectrum_snap *snap )
      a second reset, which for a peripheral declaring hard_reset throws
      away the snapshot that was just loaded. */
   libretro_snapshot_periph_override();
-#endif
 
   machine = libspectrum_snap_machine( snap );
 
@@ -123,7 +121,6 @@ snapshot_copy_from( libspectrum_snap *snap )
   return 0;
 }
 
-#ifdef __LIBRETRO__
 /* Bytes allocated in snapshot_buffer. Kept apart from snapshot_size, which
    is the length of the snapshot currently held in it: an SZX shrinks as
    well as grows, and conflating the two made snapshot_size a high water
@@ -176,7 +173,6 @@ int snapshot_update(void)
   libspectrum_free(buffer);
   return 0;
 }
-#endif
 
 int snapshot_write( const char *filename )
 {
