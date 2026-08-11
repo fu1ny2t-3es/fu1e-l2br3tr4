@@ -998,35 +998,6 @@ size_t fill_pathname_join(char *s, const char *dir,
    return _len;
 }
 
-/**
- * fill_pathname_join_special:
- * @s                  : output path
- * @dir                : directory. Cannot be identical to @s
- * @path               : path
- * @len                : size of @s
- *
- * Specialized version of fill_pathname_join.
- * Unlike fill_pathname_join(),
- * @dir and @s CANNOT be identical.
- *
- * Joins a directory (@dir) and path (@path) together.
- * Makes sure not to get  two consecutive slashes
- * between directory and path.
- *
- * @return Length of the string copied into @s
- **/
-size_t fill_pathname_join_special(char *s,
-      const char *dir, const char *path, size_t len)
-{
-   size_t _len = strlcpy(s, dir, len);
-
-   if (*s)
-      _len = fill_pathname_slash(s, len);
-
-   _len += strlcpy(s + _len, path, len - _len);
-   return _len;
-}
-
 size_t fill_pathname_join_special_ext(char *s,
       const char *dir,  const char *path,
       const char *last, const char *ext,
