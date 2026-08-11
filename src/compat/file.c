@@ -248,7 +248,6 @@ compat_fd compat_file_open(const char *path, int write)
       destination, so a long system directory would have run off the end
       of this buffer */
    {
-      char base[MAX_PATH_LEN];
       const char *leaf = path;
 
       /* Append the name as a relative element: a leading separator would
@@ -256,8 +255,17 @@ compat_fd compat_file_open(const char *path, int write)
       while (*leaf == '/' || *leaf == '\\')
          leaf++;
 
-      fill_pathname_join(base, sys, "fuse", sizeof(base));
-      fill_pathname_join(system, base, leaf, sizeof(system));
+      /* Both joins land in system[]; the second one takes it as its own
+         directory argument. fill_pathname_join() guards the leading copy
+         with `if (s != dir)`, so an identical @s and @dir is the in-place
+         case it is written for, and it appends to what is already there.
+         The intermediate used to be a second MAX_PATH_LEN buffer, which
+         put 8 KB of path scratch on the stack of a function reached while
+         loading ROMs - more than the frontend's core thread has to spare
+         on 3DS and PSP. Truncation is unchanged: both buffers were the
+         same size, so the first join clipped at the same byte either way. */
+      fill_pathname_join(system, sys,    "fuse", sizeof(system));
+      fill_pathname_join(system, system, leaf,   sizeof(system));
       pathname_conform_slashes_to_os(system);
    }
    log_cb(RETRO_LOG_INFO, "Trying to open \"%s\" from the file system\n", system);
