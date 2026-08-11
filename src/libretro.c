@@ -1079,6 +1079,44 @@ void Retro_Msg(const char * msg_str)
    }
 }
 
+// Set soft_width/soft_height/first_pixel for the given fuse_size_border
+// option (0 = full .. 4 = none), as a window centred on the hard canvas.
+//
+// The paper area is 256x192 (doubled for Timex) and every mode's border is
+// 4k pixels a side horizontally and 3k vertically, so each frame is exactly
+// (256+8k) x (192+6k) = 4:3 - the same shape as the paper - and the ladder
+// descends in even steps: k = 8, 6, 4, 2, 0.
+//
+//    full     k=8   32/24 a side   320x240
+//    medium   k=6   24/18          304x228
+//    small    k=4   16/12          288x216
+//    minimum  k=2    8/6           272x204
+//    none     k=0    0/0           256x192
+//
+// Fuse's canvas is 320x288: the vertical border it renders is 48 lines,
+// which is the whole PAL blanking-area border, not what a TV showed.
+// Standalone Fuse crops it to 24 (its DISPLAY_BORDER_HEIGHT); "full"
+// displaying all 48 was the "full doesn't look right" half of issue #177 -
+// a 10:9 frame with a vertical border half as thick again as the
+// horizontal - and the old ladder (48, 12, 6, 3, 0 lines a side) was the
+// disproportionate-steps half. 240 lines is also exactly the window the
+// 60Hz machines were already clamped to in full mode, since they only draw
+// ~24 border lines; every mode now fits inside that, so the clamp is gone.
+static void apply_border_size(int option)
+{
+   static const unsigned short widths[]  = { 320, 304, 288, 272, 256 };
+   static const unsigned short heights[] = { 240, 228, 216, 204, 192 };
+   unsigned mult = machine->is_timex ? 2 : 1;
+
+   if (option < 0 || option > 4)
+      option = 0;
+
+   soft_width = widths[option] * mult;
+   soft_height = heights[option] * mult;
+   first_pixel = (hard_height - soft_height) / 2 * hard_width +
+                 (hard_width - soft_width) / 2;
+}
+
 int update_variables(int force)
 {
    int flags = 0;
@@ -1115,8 +1153,8 @@ int update_variables(int force)
       }
 
       // Fuse always renders the full PAL-sized canvas (DISPLAY_SCREEN_HEIGHT
-      // is a compile-time constant); 60Hz machines get a smaller window
-      // carved out of it below, when the border size is applied
+      // is a compile-time constant); the border modes carve a window out of
+      // it in apply_border_size()
       unsigned width = machine->is_timex ? 640 : 320;
       unsigned height = machine->is_timex ? 576 : 288;
 
@@ -1128,36 +1166,7 @@ int update_variables(int force)
          size_border = coreopt(env_cb, core_vars, "fuse_size_border", NULL);
          size_border += size_border < 0;
 
-         if (size_border == 1)
-         {
-            soft_width = machine->is_timex ? 576 : 288;
-            soft_height = machine->is_timex ? 432 : 216;
-         }
-         else if (size_border == 2)
-         {
-            soft_width = machine->is_timex ? 544 : 272;
-            soft_height = machine->is_timex ? 408 : 204;
-         }
-         else if (size_border == 3)
-         {
-            soft_width = machine->is_timex ? 528 : 264;
-            soft_height = machine->is_timex ? 396 : 198;
-         }
-         else if (size_border == 4)
-         {
-            soft_width = machine->is_timex ? 512 : 256;
-            soft_height = machine->is_timex ? 384 : 192;
-         }
-         else
-         {
-            soft_width = hard_width;
-            // 60Hz machines only have ~24 border lines above and below the
-            // paper area; show a 240 (480 for Timex) line window centred on
-            // the canvas so the paper stays centred with real-sized borders
-            soft_height = machine_id_is_60hz(machine->id) ? (machine->is_timex ? 480 : 240) : hard_height;
-         }
-
-         first_pixel = (hard_height - soft_height) / 2 * hard_width + (hard_width - soft_width) / 2;
+         apply_border_size(size_border);
          flags |= UPDATE_AV_INFO | UPDATE_GEOMETRY;
       }
    }
@@ -1171,34 +1180,7 @@ int update_variables(int force)
       {
          size_border = option;
 
-         if (size_border == 1)
-         {
-            soft_width = machine->is_timex ? 576 : 288;
-            soft_height = machine->is_timex ? 432 : 216;
-         }
-         else if (size_border == 2)
-         {
-            soft_width = machine->is_timex ? 544 : 272;
-            soft_height = machine->is_timex ? 408 : 204;
-         }
-         else if (size_border == 3)
-         {
-            soft_width = machine->is_timex ? 528 : 264;
-            soft_height = machine->is_timex ? 396 : 198;
-         }
-         else if (size_border == 4)
-         {
-            soft_width = machine->is_timex ? 512 : 256;
-            soft_height = machine->is_timex ? 384 : 192;
-         }
-         else
-         {
-            soft_width = hard_width;
-            // Same 60Hz window as above
-            soft_height = machine_id_is_60hz(machine->id) ? (machine->is_timex ? 480 : 240) : hard_height;
-         }
-
-         first_pixel = (hard_height - soft_height) / 2 * hard_width + (hard_width - soft_width) / 2;
+         apply_border_size(size_border);
          flags |= UPDATE_GEOMETRY;
       }
    }
