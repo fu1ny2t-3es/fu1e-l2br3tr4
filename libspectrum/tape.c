@@ -1000,6 +1000,15 @@ generalised_data_edge( libspectrum_tape_generalised_data_block *block,
   case LIBSPECTRUM_TAPE_STATE_PILOT:
     table = &( block->pilot_table );
     current_symbol = block->pilot_symbols[ state->run ];
+    /* Backstop: the PRLE symbol indices are validated at parse time, so an
+       out-of-range one should not get this far. End the block rather than
+       index off the end of the alphabet if it does. */
+    if( table->symbols == NULL || current_symbol >= table->symbols_in_table ) {
+      state->state = LIBSPECTRUM_TAPE_STATE_PAUSE;
+      *tstates = block->pause_tstates;
+      do_tail_pause( tstates, end_of_block, flags );
+      break;
+    }
     symbol = &( table->symbols[ current_symbol ] );
 
     set_tstates_and_flags( symbol, state->edges_through_symbol, tstates,
@@ -1033,8 +1042,12 @@ generalised_data_edge( libspectrum_tape_generalised_data_block *block,
   case LIBSPECTRUM_TAPE_STATE_DATA1:
     table = &( block->data_table );
     /* Defend against a malformed block that reached DATA1 without a data
-       symbol table (see the PILOT transition above). */
-    if( table->symbols == NULL ) {
+       symbol table (see the PILOT transition above), and against a symbol
+       index that the bit stream decoded outside the alphabet: ASD need not be
+       a power of two, so ceil( log2( ASD ) ) bits can address past the end of
+       the table for any ASD that is not one. */
+    if( table->symbols == NULL ||
+	state->current_symbol >= table->symbols_in_table ) {
       state->state = LIBSPECTRUM_TAPE_STATE_PAUSE;
       *tstates = block->pause_tstates;
       do_tail_pause( tstates, end_of_block, flags );

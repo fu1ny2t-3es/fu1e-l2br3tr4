@@ -546,7 +546,7 @@ tzx_read_generalised_data( libspectrum_tape *tape,
   libspectrum_tape_block *block;
   libspectrum_dword length, symbol_count, data_count;
   libspectrum_qword data_bits;
-  libspectrum_word symbol_count2;
+  libspectrum_word symbol_count2, symbols_in_table;
   libspectrum_error error;
   libspectrum_tape_generalised_data_symbol_table *table;
   libspectrum_byte *symbols, *data;
@@ -616,9 +616,24 @@ tzx_read_generalised_data( libspectrum_tape *tape,
   symbols = libspectrum_new( libspectrum_byte, symbol_count );
   repeats = libspectrum_new( libspectrum_word, symbol_count );
 
+  symbols_in_table =
+    libspectrum_tape_generalised_data_symbol_table_symbols_in_table( table );
+
   for( i = 0; i < symbol_count; i++ ) {
     symbols[ i ] = **ptr; (*ptr)++;
     repeats[ i ] = (*ptr)[0] + 0x100 * (*ptr)[1]; (*ptr) += 2;
+
+    /* Each PRLE entry selects an entry in the pilot alphabet */
+    if( symbols[ i ] >= symbols_in_table ) {
+      int bad = symbols[ i ];
+      libspectrum_free( symbols );
+      libspectrum_free( repeats );
+      libspectrum_tape_block_free( block );
+      libspectrum_print_error( LIBSPECTRUM_ERROR_CORRUPT,
+			       "%s: pilot symbol %d outside alphabet",
+			       __func__, bad );
+      return LIBSPECTRUM_ERROR_CORRUPT;
+    }
   }
 
   libspectrum_tape_block_set_pilot_symbols( block, symbols );
