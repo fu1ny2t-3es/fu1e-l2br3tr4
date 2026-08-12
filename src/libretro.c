@@ -1879,6 +1879,15 @@ bool retro_load_game(const struct retro_game_info *info)
    keyb_send = 0;
    snapshot_buffer = NULL;
    snapshot_size = 0;
+   /* Per-load state: a frontend may load new content without an intervening
+      retro_deinit(), and these two survive it. Leaving them set meant that
+      once a .dck had been loaded, every later load in that session stayed
+      pinned to TS2068 - and took the forced_machine_idx branch in the
+      identify code below, which declares the content to be a .dck whatever
+      it actually is. Loading a .dck and then a .tzx opened the tape as
+      "*.dck" on a TS2068. */
+   forced_machine_at_init = 0;
+   forced_machine_idx = 0;
 
    char *argv[] = {
       "fuse",
