@@ -101,9 +101,24 @@ static const machine_t machine_list[] =
    { LIBSPECTRUM_MACHINE_SCORP,    "scorpion",     0 },
 };
 
+/* Positions in machine_list, for the places that have to name one. */
+#define MACHINE_IDX_48      0
+#define MACHINE_IDX_48_NTSC 1
+#define MACHINE_IDX_128     2
+#define MACHINE_IDX_TS2068  10
+#define MACHINE_IDX_16      11
+
 static int machine_id_is_60hz(libspectrum_machine id)
 {
    return id == LIBSPECTRUM_MACHINE_48_NTSC || id == LIBSPECTRUM_MACHINE_TS2068;
+}
+
+/* The models with no 128K paging and no AY, i.e. the ones a 128K-only
+   release cannot run on. */
+static int machine_idx_is_48k_class(int idx)
+{
+   return idx == MACHINE_IDX_48 || idx == MACHINE_IDX_48_NTSC ||
+          idx == MACHINE_IDX_16;
 }
 
 #define BGR16(color) rgb32_to_bgr16(color)
@@ -603,6 +618,16 @@ static struct retro_core_option_v2_definition core_option_definitions[] = {
       "Spectrum 48K"
    },
    {
+      "fuse_auto_machine",
+      "Auto-select Model for 128K content (needs content load)",
+      NULL,
+      "Load 128K-only releases on a Spectrum 128K even when Model is set to a 48K machine. A tape is treated as 128K-only when it says so itself (a 'stop the tape if in 48K mode' block, or hardware information ruling out a 48K) or when its filename tags it as the 128K release. Leave this disabled to have Model always honoured exactly as set; the core still says so on screen when content looks like it needs a 128K.",
+      NULL,
+      "system",
+      { CORE_OPTION_VALUE_LIST_ENABLED_DISABLED },
+      "disabled"
+   },
+   {
       "fuse_emulation_speed",
       "Emulation speed percentage (needs content load)",
       NULL,
@@ -1015,6 +1040,7 @@ static struct retro_core_options_v2 core_options_v2 = {
 static const struct retro_variable core_vars[] =
 {
    { "fuse_machine", "Model (needs content load); Spectrum 48K|Spectrum 48K (NTSC)|Spectrum 128K|Spectrum +2|Spectrum +2A|Spectrum +3|Spectrum +3e|Spectrum SE|Timex TC2048|Timex TC2068|Timex TS2068|Spectrum 16K|Pentagon 128K|Pentagon 512K|Pentagon 1024|Scorpion 256K" },
+   { "fuse_auto_machine", "Auto-select Model for 128K content (needs content load); disabled|enabled" },
    { "fuse_emulation_speed", "Emulation speed percentage (needs content load); 100|150|200|300|50"},
    { "fuse_size_border", "Size Video Border; full|medium|small|minimum|none" },
    { "fuse_palette", "Colour Palette; Fuse Standard|ZX Standard|B&W TV|Green Monochrome|Ambar Monochrome|C64|CGA 4 colours|CGA 8 colours|CGA 16 colours|Inverted colours"},
@@ -1852,6 +1878,227 @@ static struct retro_disk_control_ext_callback disk_control_ext_cb = {
    disk_get_image_label,
 };
 
+/*
+** 128K content detection
+**
+** The Model option defaults to Spectrum 48K, matching Fuse's own default,
+** and a 128K-only release loaded on a 48K machine does what it would do on
+** real hardware: it loads and then dies, usually on a garbled screen with
+** no way out. Standalone Fuse remembers the machine the user last picked in
+** its config file, so the same tape "just works" there and the core looks
+** broken by comparison - see libretro/fuse-libretro#157, reported against
+** the 128K release of Army Moves.
+**
+** Nothing here changes which machine is selected unless the user asks for
+** it with fuse_auto_machine; by default the detection only produces a
+** notification saying which option to change.
+*/
+
+/* Walk a TZX looking for the two things that only make sense on a
+   128K-family machine:
+
+     0x2A  "stop the tape if in 48K mode" - the loader itself says so;
+     0x33  hardware information, either flagging that the tape does not run
+           on a 16K/48K machine at all, or that it uses hardware specific to
+           a 128K/+2/+3.
+
+   Every block is bounds-checked before it is stepped over, so a truncated
+   or malformed tape ends the walk instead of running off the buffer. This
+   only reads; identifying and loading the content is still libspectrum's
+   job. */
+static int tzx_needs_128k(const unsigned char *p, size_t size)
+{
+   static const unsigned char tzx_sig[8] = {
+      'Z', 'X', 'T', 'a', 'p', 'e', '!', 0x1a
+   };
+   /* Signature (8) + major/minor revision (2). */
+   size_t pos = 10;
+
+   if (!p || size < pos || memcmp(p, tzx_sig, sizeof(tzx_sig)) != 0)
+      return 0;
+
+/* Bytes still available from the current read cursor. AVAIL is evaluated
+   against pos, which has already stepped past the ID byte. */
+#define AVAIL          (size - pos)
+#define NEED(n)        do { if (AVAIL < (size_t)(n)) return 0; } while (0)
+#define RD8(o)         ((size_t)p[pos + (o)])
+#define RD16(o)        (RD8(o) | (RD8((o) + 1) << 8))
+#define RD24(o)        (RD16(o) | (RD8((o) + 2) << 16))
+#define RD32(o)        (RD24(o) | (RD8((o) + 3) << 24))
+
+   while (pos < size)
+   {
+      unsigned char id = p[pos];
+      size_t len;
+
+      pos++;
+
+      switch (id)
+      {
+         case 0x10: NEED(4);  len = 4  + RD16(2);      break; /* std speed  */
+         case 0x11: NEED(18); len = 18 + RD24(15);     break; /* turbo      */
+         case 0x12:           len = 4;                 break; /* pure tone  */
+         case 0x13: NEED(1);  len = 1  + 2 * RD8(0);   break; /* pulse seq  */
+         case 0x14: NEED(10); len = 10 + RD24(7);      break; /* pure data  */
+         case 0x15: NEED(8);  len = 8  + RD24(5);      break; /* direct rec */
+         case 0x18: NEED(4);  len = 4  + RD32(0);      break; /* CSW        */
+         case 0x19: NEED(4);  len = 4  + RD32(0);      break; /* generalised*/
+         case 0x20:           len = 2;                 break; /* pause      */
+         case 0x21: NEED(1);  len = 1  + RD8(0);       break; /* group start*/
+         case 0x22:           len = 0;                 break; /* group end  */
+         case 0x23:           len = 2;                 break; /* jump       */
+         case 0x24:           len = 2;                 break; /* loop start */
+         case 0x25:           len = 0;                 break; /* loop end   */
+         case 0x26: NEED(2);  len = 2  + 2 * RD16(0);  break; /* call seq   */
+         case 0x27:           len = 0;                 break; /* return     */
+         case 0x28: NEED(2);  len = 2  + RD16(0);      break; /* select     */
+         case 0x2B: NEED(4);  len = 4  + RD32(0);      break; /* signal lvl */
+         case 0x30: NEED(1);  len = 1  + RD8(0);       break; /* text       */
+         case 0x31: NEED(2);  len = 2  + RD8(1);       break; /* message    */
+         case 0x32: NEED(2);  len = 2  + RD16(0);      break; /* archive    */
+         case 0x33: NEED(1);  len = 1  + 3 * RD8(0);   break; /* hardware   */
+         case 0x35: NEED(20); len = 20 + RD32(16);     break; /* custom     */
+         case 0x5a:           len = 9;                 break; /* glue       */
+
+         case 0x2a: /* stop the tape if in 48K mode */
+            return 1;
+
+         default:
+            /* The format reserves a DWORD length on unknown block IDs so a
+               reader can skip what it does not know. Trust it that far and
+               no further: anything that does not fit ends the walk. */
+            NEED(4);
+            len = 4 + RD32(0);
+            break;
+      }
+
+      NEED(len);
+
+      if (id == 0x33)
+      {
+         size_t count = RD8(0);
+         size_t i;
+
+         for (i = 0; i < count; i++)
+         {
+            size_t type  = RD8(1 + 3 * i);
+            size_t hw_id = RD8(2 + 3 * i);
+            size_t value = RD8(3 + 3 * i);
+
+            /* Only the computer-type entries say anything about the machine. */
+            if (type != 0)
+               continue;
+
+            /* 0 = 16K, 1 = 48K, 2 = 48K issue 1; value 3 = does not run. */
+            if (hw_id <= 2 && value == 3)
+               return 1;
+
+            /* 3 = 128K, 4 = +2, 5 = +2A/+3; value 1 = uses its hardware. */
+            if (hw_id >= 3 && hw_id <= 5 && value == 1)
+               return 1;
+         }
+      }
+
+      pos += len;
+   }
+
+   return 0;
+
+#undef AVAIL
+#undef NEED
+#undef RD8
+#undef RD16
+#undef RD24
+#undef RD32
+}
+
+/* The usual ZX Spectrum naming conventions tag the 128K release in the
+   filename: "Army Moves - 128k.tzx", "Match Day II (1987)(Ocean)(128k).tzx".
+   Only a standalone 128 counts, so a name that merely happens to contain the
+   digits ("Bruce Lee - 1280 bytes free") does not match. Directories are
+   skipped - a tape does not become a 128K release by living in a folder
+   called "128K Games". */
+static int name_says_128k(const char *path)
+{
+   const char *name;
+   const char *p;
+
+   if (!path)
+      return 0;
+
+   name = path;
+
+   for (p = path; *p; p++)
+   {
+      if (*p == '/' || *p == '\\')
+         name = p + 1;
+   }
+
+   for (p = name; (p = strstr(p, "128")) != NULL; p += 3)
+   {
+      char before = (p == name) ? 0 : p[-1];
+      char after  = p[3];
+
+      if (before >= '0' && before <= '9')
+         continue;
+      if (after >= '0' && after <= '9')
+         continue;
+
+      return 1;
+   }
+
+   return 0;
+}
+
+/* Runs before fuse_init(), so libspectrum's identify is not available yet -
+   hence the signature sniff and the extension list rather than a class
+   check. Snapshots are deliberately not considered: those carry their own
+   machine and Fuse switches to it by itself. */
+static int content_wants_128k(const char *path, const void *data, size_t size)
+{
+   static const char *const tape_exts[] = {
+      ".tzx", ".tap", ".pzx", NULL
+   };
+   const char *dot;
+   size_t i;
+
+   if (tzx_needs_128k((const unsigned char*)data, size))
+      return 1;
+
+   if (!path)
+      return 0;
+
+   dot = strrchr(path, '.');
+
+   if (!dot)
+      return 0;
+
+   for (i = 0; tape_exts[i]; i++)
+   {
+      const char *a = dot;
+      const char *b = tape_exts[i];
+
+      while (*b && *a)
+      {
+         char c = *a;
+
+         if (c >= 'A' && c <= 'Z')
+            c += 'a' - 'A';
+
+         if (c != *b)
+            break;
+
+         a++;
+         b++;
+      }
+
+      if (*b == 0 && *a == 0)
+         return name_says_128k(path);
+   }
+
+   return 0;
+}
+
 #ifndef GIT_VERSION
 extern const char* fuse_gitstamp;
 #endif
@@ -1905,8 +2152,44 @@ bool retro_load_game(const struct retro_game_info *info)
       if (ext_f != NULL && strcmp(ext_f, ".dck") == 0)
       {
          forced_machine_at_init = 1;
-         /* LIBSPECTRUM_MACHINE_TS2068 position in machine_list */
-         forced_machine_idx = 10;
+         forced_machine_idx = MACHINE_IDX_TS2068;
+      }
+   }
+
+   /* 128K content on a 48K-class model: either switch to a 128K if the user
+      has asked us to, or say what to change. Has to happen before
+      fuse_init(), which is where settings_init() -> update_variables(1)
+      turns the Model option into settings_current.start_machine. */
+   if (info && info->size != 0 && !forced_machine_at_init)
+   {
+      int selected = coreopt(env_cb, core_vars, "fuse_machine", NULL);
+
+      selected += selected < 0;
+
+      if (machine_idx_is_48k_class(selected) &&
+          content_wants_128k(info->path, info->data, info->size))
+      {
+         int auto_machine = coreopt(env_cb, core_vars, "fuse_auto_machine", NULL);
+
+         /* coreopt() indexes into the core_vars value list, which reads
+            "disabled|enabled" - same convention as fuse_issue2 and friends.
+            An unreadable option (-1) leaves the default in place. */
+         if (auto_machine == 1)
+         {
+            forced_machine_at_init = 1;
+            forced_machine_idx = MACHINE_IDX_128;
+
+            log_cb(RETRO_LOG_INFO,
+                   "128K content detected, selecting Spectrum 128K\n");
+            Retro_Msg("128K content: using Spectrum 128K");
+         }
+         else
+         {
+            log_cb(RETRO_LOG_WARN,
+                   "This looks like 128K content, but Model is a 48K machine; "
+                   "it may fail to load\n");
+            Retro_Msg("Looks like 128K content - set Model to Spectrum 128K and reload");
+         }
       }
    }
    
@@ -2004,7 +2287,7 @@ bool retro_load_game(const struct retro_game_info *info)
             libspectrum_id_t type;
             libspectrum_class_t class;
 
-            if (forced_machine_at_init && forced_machine_idx == 10)  /* LIBSPECTRUM_MACHINE_TS2068 position in machine_list */
+            if (forced_machine_at_init && forced_machine_idx == MACHINE_IDX_TS2068)
             {
                type = LIBSPECTRUM_ID_CARTRIDGE_DCK;
                class = LIBSPECTRUM_CLASS_CARTRIDGE_TIMEX;
