@@ -601,7 +601,7 @@ tzx_read_generalised_data( libspectrum_tape *tape,
   error = libspectrum_tape_block_read_symbol_table( table, ptr, length );
   if( error ) { libspectrum_tape_block_free( block ); return error; }
 
-  length -= ptr2 - *ptr;
+  length -= *ptr - ptr2;
 
   symbol_count = libspectrum_tape_generalised_data_symbol_table_symbols_in_block( table );
 
@@ -631,7 +631,7 @@ tzx_read_generalised_data( libspectrum_tape *tape,
   error = libspectrum_tape_block_read_symbol_table( table, ptr, length );
   if( error ) { libspectrum_tape_block_free( block ); return error; }
 
-  length -= ptr2 - *ptr;
+  length -= *ptr - ptr2;
 
   symbol_count2 = libspectrum_tape_generalised_data_symbol_table_symbols_in_table( table );
 
