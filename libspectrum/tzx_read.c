@@ -545,6 +545,7 @@ tzx_read_generalised_data( libspectrum_tape *tape,
 {
   libspectrum_tape_block *block;
   libspectrum_dword length, symbol_count, data_count;
+  libspectrum_qword data_bits;
   libspectrum_word symbol_count2;
   libspectrum_error error;
   libspectrum_tape_generalised_data_symbol_table *table;
@@ -645,18 +646,23 @@ tzx_read_generalised_data( libspectrum_tape *tape,
 
   symbol_count = libspectrum_tape_generalised_data_symbol_table_symbols_in_block( table );
 
-  data_count = ( ( bits_per_symbol * symbol_count ) + 7 ) / 8;
-  data_size = data_count * sizeof( *data );
+  /* bits_per_symbol * symbol_count is evaluated in 32 bits and wraps for a
+     large TOTD, which would leave a short (or empty) buffer behind a state
+     machine that still intends to read symbol_count symbols out of it.
+     Compute in 64 bits and require the whole stream to be inside the block. */
+  data_bits = (libspectrum_qword) bits_per_symbol * symbol_count;
 
-  data = libspectrum_new( libspectrum_byte, data_size );
-
-  if( end - (*ptr) < data_size ) {
-    libspectrum_free( data );
+  if( ( data_bits + 7 ) / 8 > length ) {
     libspectrum_tape_block_free( block );
     libspectrum_print_error( LIBSPECTRUM_ERROR_CORRUPT,
 			     "%s: data extends beyond end of block", __func__ );
     return LIBSPECTRUM_ERROR_CORRUPT;
   }
+
+  data_count = (libspectrum_dword) ( ( data_bits + 7 ) / 8 );
+  data_size = data_count * sizeof( *data );
+
+  data = libspectrum_new( libspectrum_byte, data_size );
 
   memcpy( data, *ptr, data_count * sizeof( *data ) );
   *ptr += data_count;
