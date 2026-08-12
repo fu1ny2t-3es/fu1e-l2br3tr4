@@ -933,15 +933,22 @@ static libspectrum_byte
 get_generalised_data_bit( libspectrum_tape_generalised_data_block *block,
                       libspectrum_tape_generalised_data_block_state *state )
 {
-  libspectrum_byte r = state->current_byte & 0x80 ? 1 : 0;
-  state->current_byte <<= 1;
+  libspectrum_byte r;
 
-  if( ++state->bits_through_byte == 8 ) {
+  /* Fetch the next byte when a bit is actually wanted from it, not as soon as
+     the previous byte is exhausted: prefetching reads one byte past the data
+     stream whenever the stream is a whole number of bytes long, which is the
+     common case. */
+  if( state->bits_through_byte == 8 ) {
     state->bits_through_byte = 0;
     state->bytes_through_stream++;
     state->current_byte = block->data[ state->bytes_through_stream ];
   }
-  
+
+  r = state->current_byte & 0x80 ? 1 : 0;
+  state->current_byte <<= 1;
+  state->bits_through_byte++;
+
   return r;
 }
 
