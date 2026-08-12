@@ -1886,7 +1886,11 @@ bool retro_load_game(const struct retro_game_info *info)
 
    /* Special case TS2068 .dck */
    /* We force TC2068 */
-   if (info && info->size != 0)
+   /* need_fullpath is false, so info->path is allowed to be NULL - the
+      identify path below says as much and handles it. strrchr() does not,
+      and a frontend that loads content from memory without naming it
+      crashed the core here before it had emulated a single frame. */
+   if (info && info->size != 0 && info->path != NULL)
    {
       const char *ext_f = strrchr(info->path, '.');
       if (ext_f != NULL && strcmp(ext_f, ".dck") == 0)
