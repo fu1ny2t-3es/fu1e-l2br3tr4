@@ -478,6 +478,16 @@ libspectrum_tape_block_read_symbol_table(
     libspectrum_tape_generalised_data_symbol *symbol;
     size_t i, j;
 
+    /* A symbol with no pulses has no edges to play. The table would be built
+       with zero-length lengths[] arrays, and generalised_data_edge() reads
+       lengths[ edges_through_symbol ] before it can compare the index against
+       max_pulses, so every symbol played would overread the allocation. */
+    if( !table->max_pulses ) {
+      libspectrum_print_error( LIBSPECTRUM_ERROR_CORRUPT,
+			       "%s: zero pulses per symbol", __func__ );
+      return LIBSPECTRUM_ERROR_CORRUPT;
+    }
+
     /* Sanity check */
     if( length < ( 2 * table->max_pulses + 1 ) * table->symbols_in_table ) {
       libspectrum_print_error( LIBSPECTRUM_ERROR_CORRUPT,
