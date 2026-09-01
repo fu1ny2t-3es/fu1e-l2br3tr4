@@ -249,62 +249,62 @@ floating_bus_merge_test( void )
 }
 
 static int
-mempool_test( void )
+fuse_mempool_test( void )
 {
   int pool1, pool2;
-  int initial_pools = mempool_get_pools();
+  int initial_pools = fuse_mempool_get_pools();
 
-  pool1 = mempool_register_pool();
+  pool1 = fuse_mempool_register_pool();
 
-  TEST_ASSERT( mempool_get_pools() == initial_pools + 1 );
-  TEST_ASSERT( mempool_get_pool_size( pool1 ) == 0 );
+  TEST_ASSERT( fuse_mempool_get_pools() == initial_pools + 1 );
+  TEST_ASSERT( fuse_mempool_get_pool_size( pool1 ) == 0 );
 
-  mempool_malloc( pool1, 23 );
+  fuse_mempool_malloc( pool1, 23 );
 
-  TEST_ASSERT( mempool_get_pool_size( pool1 ) == 1 );
+  TEST_ASSERT( fuse_mempool_get_pool_size( pool1 ) == 1 );
 
-  mempool_malloc_n( pool1, 42, 4 );
+  fuse_mempool_malloc_n( pool1, 42, 4 );
 
-  TEST_ASSERT( mempool_get_pool_size( pool1 ) == 2 );
+  TEST_ASSERT( fuse_mempool_get_pool_size( pool1 ) == 2 );
 
-  mempool_new( pool1, libspectrum_word, 5 );
+  fuse_mempool_new( pool1, libspectrum_word, 5 );
 
-  TEST_ASSERT( mempool_get_pool_size( pool1 ) == 3 );
+  TEST_ASSERT( fuse_mempool_get_pool_size( pool1 ) == 3 );
 
-  mempool_free( pool1 );
+  fuse_mempool_free( pool1 );
 
-  TEST_ASSERT( mempool_get_pool_size( pool1 ) == 0 );
+  TEST_ASSERT( fuse_mempool_get_pool_size( pool1 ) == 0 );
 
-  pool2 = mempool_register_pool();
+  pool2 = fuse_mempool_register_pool();
 
-  TEST_ASSERT( mempool_get_pools() == initial_pools + 2 );
-  TEST_ASSERT( mempool_get_pool_size( pool2 ) == 0 );
+  TEST_ASSERT( fuse_mempool_get_pools() == initial_pools + 2 );
+  TEST_ASSERT( fuse_mempool_get_pool_size( pool2 ) == 0 );
 
-  mempool_malloc( pool1, 23 );
+  fuse_mempool_malloc( pool1, 23 );
 
-  TEST_ASSERT( mempool_get_pool_size( pool2 ) == 0 );
+  TEST_ASSERT( fuse_mempool_get_pool_size( pool2 ) == 0 );
 
-  mempool_malloc_n( pool1, 6, 7 );
+  fuse_mempool_malloc_n( pool1, 6, 7 );
 
-  TEST_ASSERT( mempool_get_pool_size( pool2 ) == 0 );
+  TEST_ASSERT( fuse_mempool_get_pool_size( pool2 ) == 0 );
 
-  mempool_new( pool1, libspectrum_byte, 5 );
+  fuse_mempool_new( pool1, libspectrum_byte, 5 );
 
-  TEST_ASSERT( mempool_get_pool_size( pool2 ) == 0 );
+  TEST_ASSERT( fuse_mempool_get_pool_size( pool2 ) == 0 );
 
-  mempool_malloc( pool2, 42 );
+  fuse_mempool_malloc( pool2, 42 );
   
-  TEST_ASSERT( mempool_get_pool_size( pool2 ) == 1 );
+  TEST_ASSERT( fuse_mempool_get_pool_size( pool2 ) == 1 );
 
-  mempool_free( pool2 );
+  fuse_mempool_free( pool2 );
 
-  TEST_ASSERT( mempool_get_pool_size( pool1 ) == 3 );
-  TEST_ASSERT( mempool_get_pool_size( pool2 ) == 0 );
+  TEST_ASSERT( fuse_mempool_get_pool_size( pool1 ) == 3 );
+  TEST_ASSERT( fuse_mempool_get_pool_size( pool2 ) == 0 );
   
-  mempool_free( pool1 );
+  fuse_mempool_free( pool1 );
 
-  TEST_ASSERT( mempool_get_pool_size( pool1 ) == 0 );
-  TEST_ASSERT( mempool_get_pool_size( pool2 ) == 0 );
+  TEST_ASSERT( fuse_mempool_get_pool_size( pool1 ) == 0 );
+  TEST_ASSERT( fuse_mempool_get_pool_size( pool2 ) == 0 );
 
   return 0;
 }
@@ -786,7 +786,7 @@ unittests_run( void )
   r += contention_test();
   r += floating_bus_test();
   r += floating_bus_merge_test();
-  r += mempool_test();
+  r += fuse_mempool_test();
   r += paging_test();
   r += debugger_disassemble_unittest();
 

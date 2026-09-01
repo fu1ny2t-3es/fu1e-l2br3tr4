@@ -323,7 +323,7 @@ expression:   NUMBER { $$ = debugger_expression_new_number( $1, debugger_memory_
 
 debuggercommands:   debuggercommand { $$ = $1; }
                   | debuggercommands debuggercommand {
-                      $$ = mempool_new( debugger_memory_pool, char, strlen( $1 ) + strlen( $2 ) + 2 );
+                      $$ = fuse_mempool_new( debugger_memory_pool, char, strlen( $1 ) + strlen( $2 ) + 2 );
                       sprintf( $$, "%s\n%s", $1, $2 );
                     }
 

@@ -127,7 +127,7 @@ $[[:xdigit:]]+	{ yylval.integer = strtol( yytext+1, NULL, 16 );
 		  return NUMBER; }
 
 {ID}		{ char *dest, *source;
-  yylval.string = mempool_malloc( debugger_memory_pool, strlen( yytext ) + 1 );
+  yylval.string = fuse_mempool_malloc( debugger_memory_pool, strlen( yytext ) + 1 );
   /* remove escape characters */
   dest = yylval.string;
   source = yytext;
@@ -140,7 +140,7 @@ $[[:xdigit:]]+	{ yylval.integer = strtol( yytext+1, NULL, 16 );
   *dest = '\0';
   return STRING; }
 
-${ID}		{ yylval.string = mempool_strdup( debugger_memory_pool, yytext + 1 ); return VARIABLE; }
+${ID}		{ yylval.string = fuse_mempool_strdup( debugger_memory_pool, yytext + 1 ); return VARIABLE; }
 
 \n		{ return '\n'; }
 
@@ -156,7 +156,7 @@ ${ID}		{ yylval.string = mempool_strdup( debugger_memory_pool, yytext + 1 ); ret
 
 end             { BEGIN(INITIAL); return DEBUGGER_END; }
 
-[^\n]*          { yylval.string = mempool_strdup( debugger_memory_pool, yytext ); return STRING; }
+[^\n]*          { yylval.string = fuse_mempool_strdup( debugger_memory_pool, yytext ); return STRING; }
 \n              { return '\n'; }
 
 }

@@ -315,7 +315,7 @@ run_startup_manager( int *argc, char ***argv )
   machines_periph_register_startup();
   melodik_register_startup();
   memory_register_startup();
-  mempool_register_startup();
+  fuse_mempool_register_startup();
   multiface_register_startup();
   opus_register_startup();
   phantom_typist_register_startup();

@@ -56,7 +56,7 @@ debugger_init( void *context )
   debugger_breakpoints = NULL;
   debugger_output_base = 16;
 
-  debugger_memory_pool = mempool_register_pool();
+  debugger_memory_pool = fuse_mempool_register_pool();
 
   debugger_breakpoint_event = event_register( debugger_breakpoint_time_fn, "Breakpoint" );
 

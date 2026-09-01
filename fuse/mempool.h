@@ -24,21 +24,21 @@
 #ifndef FUSE_MEMPOOL_H
 #define FUSE_MEMPOOL_H
 
-extern const int MEMPOOL_UNTRACKED;
+extern const int FUSE_MEMPOOL_UNTRACKED;
 
-void mempool_register_startup( void );
-int mempool_register_pool( void );
-void* mempool_malloc( int pool, size_t size );
-void* mempool_malloc_n( int pool, size_t nmemb, size_t size );
-char* mempool_strdup( int pool, const char *string );
-void mempool_free( int pool );
+void fuse_mempool_register_startup( void );
+int fuse_mempool_register_pool( void );
+void* fuse_mempool_malloc( int pool, size_t size );
+void* fuse_mempool_malloc_n( int pool, size_t nmemb, size_t size );
+char* fuse_mempool_strdup( int pool, const char *string );
+void fuse_mempool_free( int pool );
 
-#define mempool_new( pool, type, count ) \
-  ( ( type * ) mempool_malloc_n( (pool), (count), sizeof( type ) ) )
+#define fuse_mempool_new( pool, type, count ) \
+  ( ( type * ) fuse_mempool_malloc_n( (pool), (count), sizeof( type ) ) )
 
 /* Unit test helper routines */
 
-int mempool_get_pools( void );
-int mempool_get_pool_size( int pool );
+int fuse_mempool_get_pools( void );
+int fuse_mempool_get_pool_size( int pool );
 
 #endif				/* #ifndef FUSE_MEMPOOL_H */

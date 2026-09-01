@@ -1217,7 +1217,7 @@ case 49:
 YY_RULE_SETUP
 #line 129 "debugger/commandl.l"
 { char *dest, *source;
-  yylval.string = mempool_malloc( debugger_memory_pool, strlen( yytext ) + 1 );
+  yylval.string = fuse_mempool_malloc( debugger_memory_pool, strlen( yytext ) + 1 );
   /* remove escape characters */
   dest = yylval.string;
   source = yytext;
@@ -1233,7 +1233,7 @@ YY_RULE_SETUP
 case 50:
 YY_RULE_SETUP
 #line 143 "debugger/commandl.l"
-{ yylval.string = mempool_strdup( debugger_memory_pool, yytext + 1 ); return VARIABLE; }
+{ yylval.string = fuse_mempool_strdup( debugger_memory_pool, yytext + 1 ); return VARIABLE; }
 	YY_BREAK
 case 51:
 /* rule 51 can match eol */
@@ -1263,7 +1263,7 @@ YY_RULE_SETUP
 case 55:
 YY_RULE_SETUP
 #line 159 "debugger/commandl.l"
-{ yylval.string = mempool_strdup( debugger_memory_pool, yytext ); return STRING; }
+{ yylval.string = fuse_mempool_strdup( debugger_memory_pool, yytext ); return STRING; }
 	YY_BREAK
 case 56:
 /* rule 56 can match eol */

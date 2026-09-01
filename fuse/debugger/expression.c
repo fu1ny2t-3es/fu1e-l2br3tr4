@@ -152,7 +152,7 @@ debugger_expression_new_number( libspectrum_dword number, int pool )
 {
   debugger_expression *exp;
 
-  exp = mempool_new( pool, debugger_expression, 1 );
+  exp = fuse_mempool_new( pool, debugger_expression, 1 );
 
   exp->type = DEBUGGER_EXPRESSION_TYPE_INTEGER;
   exp->precedence = PRECEDENCE_ATOMIC;
@@ -167,7 +167,7 @@ debugger_expression_new_binaryop( int operation, debugger_expression *operand1,
 {
   debugger_expression *exp;
 
-  exp = mempool_new( pool, debugger_expression, 1 );
+  exp = fuse_mempool_new( pool, debugger_expression, 1 );
 
   exp->type = DEBUGGER_EXPRESSION_TYPE_BINARYOP;
   exp->precedence = binaryop_precedence( operation );
@@ -185,7 +185,7 @@ debugger_expression_new_unaryop( int operation, debugger_expression *operand,
 {
   debugger_expression *exp;
 
-  exp = mempool_new( pool, debugger_expression, 1 );
+  exp = fuse_mempool_new( pool, debugger_expression, 1 );
 
   exp->type = DEBUGGER_EXPRESSION_TYPE_UNARYOP;
   exp->precedence = unaryop_precedence( operation );
@@ -210,7 +210,7 @@ debugger_expression_new_system_variable( const char *type, const char *detail,
     return NULL;
   }
 
-  exp = mempool_new( pool, debugger_expression, 1 );
+  exp = fuse_mempool_new( pool, debugger_expression, 1 );
 
   exp->type = DEBUGGER_EXPRESSION_TYPE_SYSVAR;
   exp->precedence = PRECEDENCE_ATOMIC;
@@ -224,11 +224,11 @@ debugger_expression_new_variable( const char *name, int pool )
 {
   debugger_expression *exp;
 
-  exp = mempool_new( pool, debugger_expression, 1 );
+  exp = fuse_mempool_new( pool, debugger_expression, 1 );
 
   exp->type = DEBUGGER_EXPRESSION_TYPE_VARIABLE;
   exp->precedence = PRECEDENCE_ATOMIC;
-  exp->types.variable = mempool_strdup( pool, name );
+  exp->types.variable = fuse_mempool_strdup( pool, name );
 
   return exp;
 }

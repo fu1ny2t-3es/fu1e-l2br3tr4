@@ -61,7 +61,7 @@ debugger_command_evaluate( const char *command )
   yyparse();
 
   /* And free any memory we allocated while parsing */
-  mempool_free( debugger_memory_pool );
+  fuse_mempool_free( debugger_memory_pool );
 
   ui_debugger_update();
 }

@@ -37,10 +37,10 @@
 
 static GArray *memory_pools;
 
-const int MEMPOOL_UNTRACKED = -1;
+const int FUSE_MEMPOOL_UNTRACKED = -1;
 
 static int
-mempool_init( void *context )
+fuse_mempool_init( void *context )
 {
   memory_pools = g_array_new( FALSE, FALSE, sizeof( GArray* ) );
 
@@ -48,7 +48,7 @@ mempool_init( void *context )
 }
 
 int
-mempool_register_pool( void )
+fuse_mempool_register_pool( void )
 {
   GArray *pool = g_array_new( FALSE, FALSE, sizeof( void* ) );
 
@@ -58,11 +58,11 @@ mempool_register_pool( void )
 }
 
 void*
-mempool_malloc( int pool, size_t size )
+fuse_mempool_malloc( int pool, size_t size )
 {
   void *ptr;
 
-  if( pool == MEMPOOL_UNTRACKED ) return libspectrum_malloc( size );
+  if( pool == FUSE_MEMPOOL_UNTRACKED ) return libspectrum_malloc( size );
 
   if( pool < 0 || pool >= memory_pools->len ) return NULL;
 
@@ -75,11 +75,11 @@ mempool_malloc( int pool, size_t size )
 }
 
 void *
-mempool_malloc_n( int pool, size_t nmemb, size_t size )
+fuse_mempool_malloc_n( int pool, size_t nmemb, size_t size )
 {
   void *ptr;
 
-  if( pool == MEMPOOL_UNTRACKED ) return libspectrum_malloc_n( nmemb, size );
+  if( pool == FUSE_MEMPOOL_UNTRACKED ) return libspectrum_malloc_n( nmemb, size );
 
   if( pool < 0 || pool >= memory_pools->len ) return NULL;
 
@@ -92,11 +92,11 @@ mempool_malloc_n( int pool, size_t nmemb, size_t size )
 }
 
 char*
-mempool_strdup( int pool, const char *string )
+fuse_mempool_strdup( int pool, const char *string )
 {
   size_t length = strlen( string ) + 1;
 
-  char *ptr = mempool_malloc( pool, length );
+  char *ptr = fuse_mempool_malloc( pool, length );
   if( !ptr ) return NULL;
 
   memcpy( ptr, string, length );
@@ -105,7 +105,7 @@ mempool_strdup( int pool, const char *string )
 }
 
 void
-mempool_free( int pool )
+fuse_mempool_free( int pool )
 {
   size_t i;
 
@@ -119,7 +119,7 @@ mempool_free( int pool )
 
 /* Tidy-up function called at end of emulation */
 static void
-mempool_end( void )
+fuse_mempool_end( void )
 {
   int i;
   GArray *pool;
@@ -137,24 +137,24 @@ mempool_end( void )
 }
 
 void
-mempool_register_startup( void )
+fuse_mempool_register_startup( void )
 {
   startup_manager_module dependencies[] = { STARTUP_MANAGER_MODULE_SETUID };
   startup_manager_register( STARTUP_MANAGER_MODULE_MEMPOOL, dependencies,
-                            ARRAY_SIZE( dependencies ), mempool_init, NULL,
-                            mempool_end );
+                            ARRAY_SIZE( dependencies ), fuse_mempool_init, NULL,
+                            fuse_mempool_end );
 }
 
 /* Unit test helper routines */
 
 int
-mempool_get_pools( void )
+fuse_mempool_get_pools( void )
 {
   return memory_pools->len;
 }
 
 int
-mempool_get_pool_size( int pool )
+fuse_mempool_get_pool_size( int pool )
 {
   return g_array_index( memory_pools, GArray*, pool )->len;
 }
